@@ -24,7 +24,7 @@ type Component interface {
 
 type App interface {
 	AddPrepare(func())
-	SetLogProvider(func() *logrus.Logger)
-	AddComponent(component Component)
+	RegisterComponentProvider(providerFunc interface{})
+	AddComponent(componentObj Component)
 	RunV()
 }

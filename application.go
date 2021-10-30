@@ -15,7 +15,6 @@ type AppOptions func(*Application)
 
 type Application struct {
 	Logger     *logrus.Logger
-	fLogger    func() *logrus.Logger
 	prepares   []func()
 	initables  []Initable
 	components []Component
@@ -25,8 +24,9 @@ func (a *Application) AddPrepare(p func()) {
 	a.prepares = append(a.prepares, p)
 }
 
-func (a *Application) SetLogProvider(f func() *logrus.Logger) {
-	a.fLogger = f
+// SetLogger 通过DI注入Logger实现
+func (a *Application) SetLogger(logger *logrus.Logger) {
+	a.Logger = logger
 }
 
 func NewApplication() *Application {
@@ -38,8 +38,14 @@ func NewApplication() *Application {
 	}
 }
 
+func init() {
+	diRegisterProvider(logrus.New)
+}
+
 func (a *Application) RegisterComponentProvider(providerFunc interface{}) {
 	diRegisterProvider(providerFunc)
+	// update self
+	diInjectDepens(a)
 }
 
 func (a *Application) AddComponent(obj Component) {
@@ -48,12 +54,11 @@ func (a *Application) AddComponent(obj Component) {
 	}
 	a.components = append(a.components, obj)
 	diRegisterObject(obj)
+	// update self
+	diInjectDepens(a)
 }
 
 func (a *Application) RunV() {
-	if a.fLogger != nil {
-		a.Logger = a.fLogger()
-	}
 	// prepare
 	for _, pre := range a.prepares {
 		pre()

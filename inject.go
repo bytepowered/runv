@@ -38,7 +38,7 @@ func diInjectDepens(obj interface{}) {
 	for i := 0; i < intype.NumMethod(); i++ {
 		typm := intype.Method(i)
 		// SetCompA(CompA)这样的函数
-		if !strings.HasPrefix(typm.Name, "Set") || typm.Type.NumIn() != 2 {
+		if typm.Type.NumOut() == 0 && !strings.HasPrefix(typm.Name, "Set") || typm.Type.NumIn() != 2 {
 			continue
 		}
 		marg := typm.Type.In(1)
