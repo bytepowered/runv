@@ -18,12 +18,11 @@ func newJSONLogger() *logrus.Logger {
 }
 
 func main() {
-	var app runv.App = runv.NewApplication()
-	app.AddPrepare(func() {
+	runv.RegisterComponentProvider(newJSONLogger)
+	runv.AddPrepare(func() {
 		// do prepare
 	})
-	app.RegisterComponentProvider(newJSONLogger)
-	app.AddComponent(new(CompA))
-	app.AddComponent(new(CompB))
-	app.RunV()
+	runv.AddComponent(new(CompA))
+	runv.AddComponent(new(CompB))
+	runv.RunV()
 }

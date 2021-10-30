@@ -9,108 +9,102 @@ import (
 	"time"
 )
 
-var _ App = new(Application)
+var app = &wrapper{
+	Logger:     logrus.New(),
+	initables:  make([]Initable, 0, 4),
+	components: make([]Component, 0, 4),
+	prepares:   make([]func(), 0, 4),
+}
 
-type AppOptions func(*Application)
-
-type Application struct {
+type wrapper struct {
 	Logger     *logrus.Logger
 	prepares   []func()
 	initables  []Initable
 	components []Component
 }
 
-func (a *Application) AddPrepare(p func()) {
-	a.prepares = append(a.prepares, p)
+func AddPrepare(p func()) {
+	app.prepares = append(app.prepares, p)
 }
 
 // SetLogger 通过DI注入Logger实现
-func (a *Application) SetLogger(logger *logrus.Logger) {
+func (a *wrapper) SetLogger(logger *logrus.Logger) {
 	a.Logger = logger
-}
-
-func NewApplication() *Application {
-	return &Application{
-		Logger:     logrus.New(),
-		initables:  make([]Initable, 0, 4),
-		components: make([]Component, 0, 4),
-		prepares:   make([]func(), 0, 4),
-	}
 }
 
 func init() {
 	diRegisterProvider(logrus.New)
 }
 
-func (a *Application) RegisterComponentProvider(providerFunc interface{}) {
+func RegisterComponentProvider(providerFunc interface{}) {
 	diRegisterProvider(providerFunc)
-	// update self
-	diInjectDepens(a)
+	// update app deps
+	diInjectDepens(app)
 }
 
-func (a *Application) AddComponent(obj Component) {
+func AddComponent(obj Component) {
 	if init, ok := obj.(Initable); ok {
-		a.initables = append(a.initables, init)
+		app.initables = append(app.initables, init)
 	}
-	a.components = append(a.components, obj)
+	app.components = append(app.components, obj)
 	diRegisterObject(obj)
-	// update self
-	diInjectDepens(a)
+	// update app deps
+	diInjectDepens(app)
 }
 
-func (a *Application) RunV() {
+func RunV() {
 	// prepare
-	for _, pre := range a.prepares {
+	for _, pre := range app.prepares {
 		pre()
 	}
-	a.Logger.Infof("app: init")
+	app.Logger.Infof("app: init")
 	// init and inject deps
-	for _, obj := range a.initables {
+	for _, obj := range app.initables {
 		diInjectDepens(obj)
 		if err := obj.OnInit(); err != nil {
-			a.Logger.Fatalf("init failed: %s", err)
+			app.Logger.Fatalf("init failed: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
 	defer ctxfun()
 	// finally shutdown
 	defer func() {
-		for _, cmp := range a.components {
-			ctx := newStateContext(goctx, a.Logger, nil)
-			err := a.metric(ctx, "comp shutdown", cmp.Shutdown)
+		for _, cmp := range app.components {
+			ctx := newStateContext(goctx, app.Logger, nil)
+			err := metric(ctx, "comp shutdown", cmp.Shutdown)
 			if err != nil {
-				a.Logger.Errorf("shutdown error: %s", err)
+				app.Logger.Errorf("shutdown error: %s", err)
 			}
 		}
-		a.Logger.Infof("app: terminaled")
+		app.Logger.Infof("app: terminaled")
 	}()
 	// start
-	a.Logger.Infof("app: start")
-	for _, cmp := range a.components {
-		ctx := newStateContext(goctx, a.Logger, nil)
-		err := a.metric(ctx, "comp startup", cmp.Startup)
+	app.Logger.Infof("app: start")
+	for _, cmp := range app.components {
+		ctx := newStateContext(goctx, app.Logger, nil)
+		err := metric(ctx, "comp startup", cmp.Startup)
 		if err != nil {
-			a.Logger.Errorf("startup error: %s", err)
+			app.Logger.Errorf("startup error: %s", err)
 		}
 	}
 	// serve
-	a.Logger.Infof("app: serve")
-	for _, cmp := range a.components {
-		ctx := newStateContext(goctx, a.Logger, nil)
-		err := a.metric(ctx, "comp serve", cmp.Serve)
+	app.Logger.Infof("app: serve")
+	for _, cmp := range app.components {
+		ctx := newStateContext(goctx, app.Logger, nil)
+		err := metric(ctx, "comp serve", cmp.Serve)
 		if err != nil {
-			a.Logger.Errorf("serve error: %s", err)
+			app.Logger.Errorf("serve error: %s", err)
 		}
 	}
-	a.Logger.Infof("app: run, waiting signals...")
+	app.Logger.Infof("app: run, waiting signals...")
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
 }
 
-func (a *Application) metric(ctx Context, name string, step func(ctx Context) error) error {
+func metric(ctx Context, name string, step func(ctx Context) error) error {
 	defer func(t time.Time) {
-		a.Logger.Infof("%s takes: %s", name, time.Since(t))
+		ctx.Log().Infof("%s takes: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
 }

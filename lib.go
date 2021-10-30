@@ -21,10 +21,3 @@ type Component interface {
 	Serve(Context) error
 	Shutdown(Context) error
 }
-
-type App interface {
-	AddPrepare(func())
-	RegisterComponentProvider(providerFunc interface{})
-	AddComponent(componentObj Component)
-	RunV()
-}
