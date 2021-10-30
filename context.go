@@ -38,6 +38,6 @@ func (s *StateContext) GetVar(key interface{}) (value interface{}) {
 	return
 }
 
-func (s *StateContext) Logger() *logrus.Logger {
+func (s *StateContext) Log() *logrus.Logger {
 	return s.logger
 }

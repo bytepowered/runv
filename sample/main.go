@@ -7,9 +7,10 @@ import (
 
 func main() {
 	var app runv.App = runv.NewApplication()
-	app.SetInitLogger(func() *logrus.Logger {
-		return logrus.New()
+	app.AddPrepare(func() {
+		// do prepare
 	})
+	app.SetLogProvider(logrus.New)
 	app.AddComponent(new(CompA))
 	app.AddComponent(new(CompB))
 	app.RunV()

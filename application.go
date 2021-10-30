@@ -2,11 +2,10 @@ package runv
 
 import (
 	"context"
-	"fmt"
 	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
-	"reflect"
+	"syscall"
 	"time"
 )
 
@@ -17,17 +16,16 @@ type AppOptions func(*Application)
 type Application struct {
 	Logger     *logrus.Logger
 	fLogger    func() *logrus.Logger
-	prepare    []func()
+	prepares   []func()
 	initables  []Initable
 	components []Component
-	typerefs   map[string]reflect.Value
 }
 
 func (a *Application) AddPrepare(p func()) {
-	a.prepare = append(a.prepare, p)
+	a.prepares = append(a.prepares, p)
 }
 
-func (a *Application) SetInitLogger(f func() *logrus.Logger) {
+func (a *Application) SetLogProvider(f func() *logrus.Logger) {
 	a.fLogger = f
 }
 
@@ -36,40 +34,41 @@ func NewApplication() *Application {
 		Logger:     logrus.New(),
 		initables:  make([]Initable, 0, 4),
 		components: make([]Component, 0, 4),
-		typerefs:   make(map[string]reflect.Value, 4),
-		prepare:    make([]func(), 0, 4),
+		prepares:   make([]func(), 0, 4),
 	}
 }
 
-func (a *Application) AddComponent(cmp Component) {
-	if init, ok := cmp.(Initable); ok {
+func (a *Application) RegisterComponentProvider(providerFunc interface{}) {
+	diRegisterProvider(providerFunc)
+}
+
+func (a *Application) AddComponent(obj Component) {
+	if init, ok := obj.(Initable); ok {
 		a.initables = append(a.initables, init)
 	}
-	a.components = append(a.components, cmp)
-	tn := fmt.Sprintf("%T", cmp)
-	fmt.Printf("add comp, type: %s\n", tn)
-	a.typerefs[tn] = reflect.ValueOf(cmp)
+	a.components = append(a.components, obj)
+	diRegisterObject(obj)
 }
 
 func (a *Application) RunV() {
 	if a.fLogger != nil {
 		a.Logger = a.fLogger()
 	}
-	a.Logger.Infof("app: init")
-	// init
-	injectloader := func(typestr string) ([]reflect.Value, bool) {
-		v, ok := a.typerefs[typestr]
-		return []reflect.Value{v}, ok
+	// prepare
+	for _, pre := range a.prepares {
+		pre()
 	}
-	for _, init := range a.initables {
-		inject(init, injectloader)
-		err := init.OnInit()
-		if err != nil {
+	a.Logger.Infof("app: init")
+	// init and inject deps
+	for _, obj := range a.initables {
+		diInjectDepens(obj)
+		if err := obj.OnInit(); err != nil {
 			a.Logger.Fatalf("init failed: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
 	defer ctxfun()
+	// finally shutdown
 	defer func() {
 		for _, cmp := range a.components {
 			ctx := newStateContext(goctx, a.Logger, nil)
@@ -89,7 +88,6 @@ func (a *Application) RunV() {
 			a.Logger.Errorf("startup error: %s", err)
 		}
 	}
-	a.Logger.Infof("app: started")
 	// serve
 	a.Logger.Infof("app: serve")
 	for _, cmp := range a.components {
@@ -99,9 +97,9 @@ func (a *Application) RunV() {
 			a.Logger.Errorf("serve error: %s", err)
 		}
 	}
-	a.Logger.Infof("app: runed")
+	a.Logger.Infof("app: run, waiting signals...")
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
 }
 

@@ -20,16 +20,16 @@ func (c *CompA) OnInit() error {
 }
 
 func (c *CompA) Startup(ctx runv.Context) error {
-	ctx.Logger().Infof("startup: A")
+	ctx.Log().Infof("startup: A")
 	return nil
 }
 
 func (c *CompA) Serve(ctx runv.Context) error {
-	ctx.Logger().Infof("serve: A")
+	ctx.Log().Infof("serve: A")
 	return nil
 }
 
 func (c *CompA) Shutdown(ctx runv.Context) error {
-	ctx.Logger().Infof("shutdown: A")
+	ctx.Log().Infof("shutdown: A")
 	return nil
 }

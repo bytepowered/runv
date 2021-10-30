@@ -9,7 +9,7 @@ type Context interface {
 	Context() context.Context
 	GetVarE(key interface{}) (value interface{}, ok bool)
 	GetVar(key interface{}) (value interface{})
-	Logger() *logrus.Logger
+	Log() *logrus.Logger
 }
 
 type Initable interface {
@@ -24,7 +24,7 @@ type Component interface {
 
 type App interface {
 	AddPrepare(func())
-	SetInitLogger(func() *logrus.Logger)
+	SetLogProvider(func() *logrus.Logger)
 	AddComponent(component Component)
 	RunV()
 }
