@@ -10,12 +10,19 @@ import (
 	"time"
 )
 
-var app = &wrapper{
-	logger:     logrus.New(),
-	initables:  make([]Initable, 0, 4),
-	components: make([]Component, 0, 4),
-	prepares:   make([]func() error, 0, 4),
-}
+var (
+	app = &wrapper{
+		logger:     logrus.New(),
+		initables:  make([]Initable, 0, 4),
+		components: make([]Component, 0, 4),
+		prepares:   make([]func() error, 0, 4),
+	}
+	appAwait = func() <-chan os.Signal {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		return sig
+	}
+)
 
 type wrapper struct {
 	logger     *logrus.Logger
@@ -24,18 +31,22 @@ type wrapper struct {
 	components []Component
 }
 
+// SetLogger 通过DI注入Logger实现
+func (w *wrapper) SetLogger(logger *logrus.Logger) {
+	w.logger = logger
+}
+
 func init() {
 	diRegisterProvider(logrus.New)
+}
+
+func SetAppAwaitFunc(saf func() <-chan os.Signal) {
+	appAwait = saf
 }
 
 // AddPrepare 添加Prepare函数
 func AddPrepare(p func() error) {
 	app.prepares = append(app.prepares, p)
-}
-
-// SetLogger 通过DI注入Logger实现
-func (w *wrapper) SetLogger(logger *logrus.Logger) {
-	w.logger = logger
 }
 
 // AddProvider 添加Prototype对象的Provider函数
@@ -82,9 +93,7 @@ func RunV() {
 		app.logger.Fatalf("app serve, error: %s", err)
 	}
 	app.logger.Infof("app: run, waiting signals...")
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
+	<-appAwait()
 }
 
 func doShutdown(goctx context.Context) {
