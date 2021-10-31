@@ -38,8 +38,8 @@ func (w *wrapper) SetLogger(logger *logrus.Logger) {
 	w.logger = logger
 }
 
-// AddPrototypeProvider 注册ComponentProvider函数
-func AddPrototypeProvider(providerFunc interface{}) {
+// AddProvider 添加Prototype对象的Provider函数
+func AddProvider(providerFunc interface{}) {
 	diRegisterProvider(providerFunc)
 	// update app deps
 	diInjectDepens(app)
@@ -99,7 +99,7 @@ func doShutdown(goctx context.Context) {
 }
 
 func doStartup(goctx context.Context) error {
-	app.logger.Infof("app: start")
+	app.logger.Infof("app: startup")
 	for _, obj := range app.components {
 		ctx := newStateContext(goctx, app.logger, nil)
 		err := metric(ctx, fmt.Sprintf("component[%T] startup...", obj), obj.Startup)

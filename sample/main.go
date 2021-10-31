@@ -18,7 +18,7 @@ func newJSONLogger() *logrus.Logger {
 }
 
 func main() {
-	runv.AddPrototypeProvider(newJSONLogger)
+	runv.AddProvider(newJSONLogger)
 	runv.AddPrepare(func() error {
 		// do prepare
 		return nil
