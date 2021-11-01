@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/bytepowered/runv"
-	"github.com/sirupsen/logrus"
 )
 
-var _ runv.Component = new(CompA)
+var (
+	_ runv.Component      = new(CompA)
+	_ runv.StateComponent = new(CompA)
+)
 
 type CompA struct {
 }
@@ -14,14 +18,13 @@ func (c *CompA) Name() string {
 	return "I am COMP A!!"
 }
 
-func (c *CompA) OnInit() error {
-	logrus.Info("on init: A")
+func (c *CompA) Startup(ctx context.Context) error {
+	fmt.Println("startup: A")
 	return nil
 }
 
-func (c *CompA) Startup(ctx runv.Context) error {
-	ctx.Log().Infof("startup: A")
-	return nil
+func (c *CompA) Setup(ctx context.Context) runv.Context {
+	return runv.NewStateContext2(ctx)
 }
 
 func (c *CompA) Serve(ctx runv.Context) error {
@@ -29,7 +32,7 @@ func (c *CompA) Serve(ctx runv.Context) error {
 	return nil
 }
 
-func (c *CompA) Shutdown(ctx runv.Context) error {
-	ctx.Log().Infof("shutdown: A")
+func (c *CompA) Shutdown(ctx context.Context) error {
+	fmt.Println("shutdown: A")
 	return nil
 }
