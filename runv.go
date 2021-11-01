@@ -31,6 +31,7 @@ type wrapper struct {
 	initables  []Initable
 	components []Component
 	states     []StateComponent
+	refs       []interface{}
 }
 
 // SetLogger 通过DI注入Logger实现
@@ -69,7 +70,8 @@ func Add(obj interface{}) {
 	if state, ok := obj.(StateComponent); ok {
 		app.states = append(app.states, state)
 	}
-	diRegisterObject(obj)
+	app.refs = append(app.refs, obj)
+	diRegisterInstance(obj)
 	// update app deps
 	diInjectDepens(app)
 }
@@ -81,10 +83,13 @@ func RunV() {
 			app.logger.Fatalf("app: prepare, %s", err)
 		}
 	}
-	app.logger.Infof("app: init")
-	// init and inject deps
-	for _, obj := range app.initables {
+	// inject deps
+	for _, obj := range app.refs {
 		diInjectDepens(obj)
+	}
+	app.logger.Infof("app: init")
+	// init
+	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
 			app.logger.Fatalf("init failed: %s", err)
 		}
@@ -93,9 +98,11 @@ func RunV() {
 	defer ctxfun()
 	// finally shutdown
 	defer shutdown(goctx)
+	// startup
 	if err := startup(goctx); err != nil {
 		app.logger.Fatalf("app startup, error: %s", err)
 	}
+	// serve
 	if err := serve(goctx); err != nil {
 		app.logger.Fatalf("app serve, error: %s", err)
 	}
