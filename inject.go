@@ -1,4 +1,4 @@
-package runv
+package inject
 
 import (
 	"fmt"
@@ -7,33 +7,48 @@ import (
 )
 
 var (
-	_diTypedInstances = make(map[reflect.Type]interface{}, 4)
-	_diTypedProviders = make(map[reflect.Type]func() interface{}, 4)
+	typedObjects   = make(map[key]interface{}, 4)
+	typedProviders = make(map[key]func() interface{}, 4)
 )
 
-func diRegisterInstance(inst interface{}) {
+type key struct {
+	t    reflect.Type
+	name string
+}
+
+func (k key) String() string {
+	return fmt.Sprintf("type: %s, name: %s", k.t, k.name)
+}
+
+func RegisterObject(inst interface{}) {
 	typ := reflect.TypeOf(inst)
-	fmt.Printf("[di]register instance, type: %s\n", typ.String())
-	_diTypedInstances[typ] = inst
+	fmt.Printf("[DI]register object, type: %s\n", typ.String())
+	typedObjects[key{t: typ, name: typ.Name()}] = inst
 }
 
-func diRegisterProvider(provider interface{}) {
-	typ := reflect.TypeOf(provider)
-	if typ.Kind() != reflect.Func {
-		panic(fmt.Sprintf("[di]register object provider func must be <function>, was: %T", provider))
+func RegisterProvider(provider interface{}) {
+	protyp := reflect.TypeOf(provider)
+	if protyp.Kind() != reflect.Func {
+		panic(fmt.Sprintf("[DI]register object-provider func must be <function>, was: %T", provider))
 	}
-	if typ.NumOut() != 1 {
-		panic(fmt.Sprintf("invalid return values of provider func, num: %d", typ.NumOut()))
+	if protyp.NumOut() != 1 {
+		panic(fmt.Sprintf("invalid return values of provider func, num: %d", protyp.NumOut()))
 	}
-	val := reflect.ValueOf(provider)
-	_diTypedProviders[typ] = func() interface{} {
-		return val.Call(nil)[0].Interface()
+	proval := reflect.ValueOf(provider)
+	elem := protyp.Out(0)
+	typedProviders[key{t: elem, name: elem.Name()}] = func() interface{} {
+		return proval.Call(nil)[0].Interface()
 	}
 }
 
-func diInjectDepens(hostobj interface{}) {
+func ResolveDeps(hostobj interface{}) {
 	meta := reflect.TypeOf(hostobj)
 	invoker := reflect.ValueOf(hostobj)
+	doMethodInject(meta, invoker)
+	// TODO 通过结构体字段注入
+}
+
+func doMethodInject(meta reflect.Type, invoker reflect.Value) {
 	// 通过Setter函数注入
 	for i := 0; i < meta.NumMethod(); i++ {
 		mthtype := meta.Method(i)
@@ -47,58 +62,55 @@ func diInjectDepens(hostobj interface{}) {
 		argtype := mthtype.Type.In(1)
 		switch argtype.Kind() {
 		case reflect.Ptr:
-			if obj, ok := diLoadInstanceByType(argtype); ok {
+			if obj, ok := LoadObjectByType(argtype); ok {
 				invoker.Method(i).Call([]reflect.Value{reflect.ValueOf(obj)})
 			}
 
-		//case reflect.Slice:
-		//	if argtype.Elem().Kind() == reflect.Interface {
-		//		eletype := argtype.Elem()
-		//		objs, ok := diLoadInstanceByInterface(eletype)
-		//		if !ok {
-		//			continue
-		//		}
-		//		fmt.Printf("Objes Type: %T, %s\n", objs, objs)
-		//		args := reflect.MakeSlice(reflect.SliceOf(eletype), 0, len(objs))
-		//		for _, obj := range objs {
-		//			fmt.Printf("Obj: %T, %s\n", obj, obj)
-		//			//nv := reflect.New(eletype)
-		//			//nv.Set(reflect.ValueOf(obj))
-		//			//args = reflect.AppendSlice(args, nv)
-		//		}
-		//		invoker.Method(i).Call([]reflect.Value{args})
-		//	}
+		case reflect.Slice:
+			if argtype.Elem().Kind() != reflect.Interface {
+				continue
+			}
+			eletype := argtype.Elem()
+			objs, ok := LoadObjectsByIface(eletype)
+			if !ok {
+				continue
+			}
+			args := reflect.MakeSlice(reflect.SliceOf(eletype), len(objs), len(objs))
+			for at, obj := range objs {
+				args.Index(at).Set(reflect.ValueOf(obj))
+			}
+			invoker.Method(i).Call([]reflect.Value{args})
 		}
 	}
-	// TODO 通过结构体字段注入
 }
 
-func diLoadInstanceByType(typ reflect.Type) (interface{}, bool) {
+func LoadObjectByType(typ reflect.Type) (interface{}, bool) {
 	// instances
-	if ref, ok := _diTypedInstances[typ]; ok {
+	k := key{t: typ, name: typ.Name()}
+	if ref, ok := typedObjects[k]; ok {
 		return ref, true
 	}
 	// by provider
-	if provider, ok := _diTypedProviders[typ]; ok {
+	if provider, ok := typedProviders[k]; ok {
 		obj := provider()
-		diInjectDepens(obj)
+		ResolveDeps(obj)
 		return obj, true
 	}
 	return nil, false
 }
 
-func diLoadInstanceByInterface(iface reflect.Type) (out []interface{}, ok bool) {
+func LoadObjectsByIface(iface reflect.Type) (out []interface{}, ok bool) {
 	// instances
-	for typ, inst := range _diTypedInstances {
-		if typ.Implements(iface) {
+	for k, inst := range typedObjects {
+		if k.t.Implements(iface) {
 			out = append(out, inst)
 		}
 	}
 	// providers
-	for typ, provider := range _diTypedProviders {
-		if typ.Implements(iface) {
+	for k, provider := range typedProviders {
+		if k.t.Implements(iface) {
 			obj := provider()
-			diInjectDepens(obj)
+			ResolveDeps(obj)
 			out = append(out, obj)
 		}
 	}
