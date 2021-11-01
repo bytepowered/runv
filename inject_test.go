@@ -1,17 +1,43 @@
 package runv
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
+
+type DIStructTag interface {
+	Tag() string
+}
 
 type DIStructA struct {
 	Name string
 }
 
+func (b *DIStructA) Tag() string {
+	return "tag: a"
+}
+
 type DIStructB struct {
 	RefA *DIStructA
 	Name string
+}
+
+func (b *DIStructB) Tag() string {
+	return "tag: b"
+}
+
+//func (b *DIStructB) SetA(a *DIStructA) {
+//	fmt.Println("set: a.Name: " + a.Name)
+//	b.RefA = a
+//}
+
+func (b *DIStructB) SetMultiA(a []DIStructTag) {
+	for _, t := range a {
+		if t != nil {
+			fmt.Println("set multi: tag= " + t.Tag())
+		}
+	}
 }
 
 type DIStructX struct {
@@ -36,12 +62,12 @@ func (y *DIStructZ) SetX(x *DIStructY) {
 }
 
 func TestInjectByObject(t *testing.T) {
-	cmpA := &DIStructA{Name: "abcdef"}
-	diRegisterObject(cmpA)
+	cmpA := &DIStructA{Name: "DIStructA"}
+	diRegisterInstance(cmpA)
 	cmpB := &DIStructB{Name: "DIStructB"}
 	diInjectDepens(cmpB)
-	assert.NotNil(t, cmpB.RefA)
-	assert.Equal(t, cmpB.RefA.Name, cmpA.Name)
+	//assert.NotNil(t, cmpB.RefA)
+	//assert.Equal(t, cmpB.RefA.Name, cmpA.Name)
 }
 
 func TestInjectByProvider(t *testing.T) {
