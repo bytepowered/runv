@@ -7,58 +7,100 @@ import (
 )
 
 var (
-	_diObjects    = make(map[string]reflect.Value, 4)
-	_diPrototypes = make(map[string]func() reflect.Value, 4)
+	_diTypedInstances = make(map[reflect.Type]interface{}, 4)
+	_diTypedProviders = make(map[reflect.Type]func() interface{}, 4)
 )
 
-func diRegisterObject(obj interface{}) {
-	objtype := fmt.Sprintf("%T", obj)
-	fmt.Printf("[di]register object, type: %s\n", objtype)
-	_diObjects[objtype] = reflect.ValueOf(obj)
+func diRegisterInstance(inst interface{}) {
+	typ := reflect.TypeOf(inst)
+	fmt.Printf("[di]register instance, type: %s\n", typ.String())
+	_diTypedInstances[typ] = inst
 }
 
-func diRegisterProvider(providerFunc interface{}) {
-	pftype := reflect.TypeOf(providerFunc)
-	if pftype.Kind() != reflect.Func {
-		panic(fmt.Sprintf("[di]register object provider func must be <function>, was: %T", providerFunc))
+func diRegisterProvider(provider interface{}) {
+	typ := reflect.TypeOf(provider)
+	if typ.Kind() != reflect.Func {
+		panic(fmt.Sprintf("[di]register object provider func must be <function>, was: %T", provider))
 	}
-	if pftype.NumOut() != 1 {
-		panic(fmt.Sprintf("invalid return values of provider func, num: %d", pftype.NumOut()))
+	if typ.NumOut() != 1 {
+		panic(fmt.Sprintf("invalid return values of provider func, num: %d", typ.NumOut()))
 	}
-	pfvalue := reflect.ValueOf(providerFunc)
-	_diPrototypes[pftype.Out(0).String()] = func() reflect.Value {
-		return pfvalue.Call(nil)[0]
+	val := reflect.ValueOf(provider)
+	_diTypedProviders[typ] = func() interface{} {
+		return val.Call(nil)[0].Interface()
 	}
 }
 
-func diInjectDepens(obj interface{}) {
-	intype := reflect.TypeOf(obj)
-	invalue := reflect.ValueOf(obj)
+func diInjectDepens(hostobj interface{}) {
+	meta := reflect.TypeOf(hostobj)
+	invoker := reflect.ValueOf(hostobj)
 	// 通过Setter函数注入
-	for i := 0; i < intype.NumMethod(); i++ {
-		typm := intype.Method(i)
-		// SetCompA(CompA)这样的函数
-		if typm.Type.NumOut() == 0 && !strings.HasPrefix(typm.Name, "Set") || typm.Type.NumIn() != 2 {
+	for i := 0; i < meta.NumMethod(); i++ {
+		mthtype := meta.Method(i)
+		// SetCompA(CompA), InjectComB(CompB)这样的函数
+		if mthtype.Type.NumOut() != 0 || mthtype.Type.NumIn() != 2 {
 			continue
 		}
-		marg := typm.Type.In(1)
-		if v, ok := _diload(marg.String()); ok {
-			invalue.Method(i).Call(v)
+		if !strings.HasPrefix(mthtype.Name, "Set") && !strings.HasPrefix(mthtype.Name, "Inject") {
+			continue
+		}
+		argtype := mthtype.Type.In(1)
+		switch argtype.Kind() {
+		case reflect.Ptr:
+			if obj, ok := diLoadInstanceByType(argtype); ok {
+				invoker.Method(i).Call([]reflect.Value{reflect.ValueOf(obj)})
+			}
+
+		//case reflect.Slice:
+		//	if argtype.Elem().Kind() == reflect.Interface {
+		//		eletype := argtype.Elem()
+		//		objs, ok := diLoadInstanceByInterface(eletype)
+		//		if !ok {
+		//			continue
+		//		}
+		//		fmt.Printf("Objes Type: %T, %s\n", objs, objs)
+		//		args := reflect.MakeSlice(reflect.SliceOf(eletype), 0, len(objs))
+		//		for _, obj := range objs {
+		//			fmt.Printf("Obj: %T, %s\n", obj, obj)
+		//			//nv := reflect.New(eletype)
+		//			//nv.Set(reflect.ValueOf(obj))
+		//			//args = reflect.AppendSlice(args, nv)
+		//		}
+		//		invoker.Method(i).Call([]reflect.Value{args})
+		//	}
 		}
 	}
 	// TODO 通过结构体字段注入
 }
 
-func _diload(typekey string) ([]reflect.Value, bool) {
-	// objects
-	if ref, ok := _diObjects[typekey]; ok {
-		return []reflect.Value{ref}, true
+func diLoadInstanceByType(typ reflect.Type) (interface{}, bool) {
+	// instances
+	if ref, ok := _diTypedInstances[typ]; ok {
+		return ref, true
 	}
-	// by loader
-	if provider, ok := _diPrototypes[typekey]; ok {
-		ref := provider()
-		diInjectDepens(ref.Interface())
-		return []reflect.Value{ref}, true
+	// by provider
+	if provider, ok := _diTypedProviders[typ]; ok {
+		obj := provider()
+		diInjectDepens(obj)
+		return obj, true
 	}
 	return nil, false
+}
+
+func diLoadInstanceByInterface(iface reflect.Type) (out []interface{}, ok bool) {
+	// instances
+	for typ, inst := range _diTypedInstances {
+		if typ.Implements(iface) {
+			out = append(out, inst)
+		}
+	}
+	// providers
+	for typ, provider := range _diTypedProviders {
+		if typ.Implements(iface) {
+			obj := provider()
+			diInjectDepens(obj)
+			out = append(out, obj)
+		}
+	}
+	return out, true
 }
