@@ -6,9 +6,8 @@ import (
 )
 
 type Context interface {
-	Context() context.Context
-	GetVarE(key interface{}) (value interface{}, ok bool)
-	GetVar(key interface{}) (value interface{})
+	context.Context
+	ValueE(key interface{}) (value interface{}, ok bool)
 	Log() *logrus.Logger
 }
 
@@ -16,8 +15,12 @@ type Initable interface {
 	OnInit() error
 }
 
-type Component interface {
-	Startup(Context) error
+type StateComponent interface {
+	Setup(ctx context.Context) Context
 	Serve(Context) error
-	Shutdown(Context) error
+}
+
+type Component interface {
+	Startup(ctx context.Context) error
+	Shutdown(ctx context.Context) error
 }
