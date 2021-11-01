@@ -7,23 +7,22 @@ import (
 )
 
 var (
-	typedObjects   = make(map[key]interface{}, 4)
-	typedProviders = make(map[key]func() interface{}, 4)
+	typedObjects   = make(map[objectkey]interface{}, 4)
+	typedProviders = make(map[objectkey]func() interface{}, 4)
 )
 
-type key struct {
-	t    reflect.Type
+type objectkey struct {
+	typ  reflect.Type
 	name string
 }
 
-func (k key) String() string {
-	return fmt.Sprintf("type: %s, name: %s", k.t, k.name)
+func (k objectkey) String() string {
+	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
 }
 
-func RegisterObject(inst interface{}) {
-	typ := reflect.TypeOf(inst)
-	fmt.Printf("[DI]register object, type: %s\n", typ.String())
-	typedObjects[key{t: typ, name: typ.Name()}] = inst
+func RegisterObject(obj interface{}) {
+	typ := reflect.TypeOf(obj)
+	typedObjects[objectkey{typ: typ, name: typ.Name()}] = obj
 }
 
 func RegisterProvider(provider interface{}) {
@@ -36,46 +35,49 @@ func RegisterProvider(provider interface{}) {
 	}
 	proval := reflect.ValueOf(provider)
 	elem := protyp.Out(0)
-	typedProviders[key{t: elem, name: elem.Name()}] = func() interface{} {
+	typedProviders[objectkey{typ: elem, name: elem.Name()}] = func() interface{} {
 		return proval.Call(nil)[0].Interface()
 	}
 }
 
-func ResolveDeps(hostobj interface{}) {
-	meta := reflect.TypeOf(hostobj)
-	invoker := reflect.ValueOf(hostobj)
-	doMethodInject(meta, invoker)
+func ResolveDeps(host interface{}) {
+	meta := reflect.TypeOf(host)
+	invoker := reflect.ValueOf(host)
+	switch meta.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Struct:
+		injectSetter(meta, invoker)
+	}
 	// TODO 通过结构体字段注入
 }
 
-func doMethodInject(meta reflect.Type, invoker reflect.Value) {
+func injectSetter(meta reflect.Type, invoker reflect.Value) {
 	// 通过Setter函数注入
 	for i := 0; i < meta.NumMethod(); i++ {
-		mthtype := meta.Method(i)
+		mType := meta.Method(i)
 		// SetCompA(CompA), InjectComB(CompB)这样的函数
-		if mthtype.Type.NumOut() != 0 || mthtype.Type.NumIn() != 2 {
+		if mType.Type.NumOut() != 0 || mType.Type.NumIn() != 2 {
 			continue
 		}
-		if !strings.HasPrefix(mthtype.Name, "Set") && !strings.HasPrefix(mthtype.Name, "Inject") {
+		if !strings.HasPrefix(mType.Name, "Set") && !strings.HasPrefix(mType.Name, "Inject") {
 			continue
 		}
-		argtype := mthtype.Type.In(1)
-		switch argtype.Kind() {
+		aType := mType.Type.In(1)
+		switch aType.Kind() {
 		case reflect.Ptr:
-			if obj, ok := LoadObjectByType(argtype); ok {
+			if obj, ok := LoadObjectByType(aType); ok {
 				invoker.Method(i).Call([]reflect.Value{reflect.ValueOf(obj)})
 			}
 
 		case reflect.Slice:
-			if argtype.Elem().Kind() != reflect.Interface {
+			if aType.Elem().Kind() != reflect.Interface {
 				continue
 			}
-			eletype := argtype.Elem()
-			objs, ok := LoadObjectsByIface(eletype)
+			eType := aType.Elem()
+			objs, ok := LoadObjectsByIface(eType)
 			if !ok {
 				continue
 			}
-			args := reflect.MakeSlice(reflect.SliceOf(eletype), len(objs), len(objs))
+			args := reflect.MakeSlice(reflect.SliceOf(eType), len(objs), len(objs))
 			for at, obj := range objs {
 				args.Index(at).Set(reflect.ValueOf(obj))
 			}
@@ -86,12 +88,12 @@ func doMethodInject(meta reflect.Type, invoker reflect.Value) {
 
 func LoadObjectByType(typ reflect.Type) (interface{}, bool) {
 	// instances
-	k := key{t: typ, name: typ.Name()}
-	if ref, ok := typedObjects[k]; ok {
+	key := objectkey{typ: typ, name: typ.Name()}
+	if ref, ok := typedObjects[key]; ok {
 		return ref, true
 	}
 	// by provider
-	if provider, ok := typedProviders[k]; ok {
+	if provider, ok := typedProviders[key]; ok {
 		obj := provider()
 		ResolveDeps(obj)
 		return obj, true
@@ -102,13 +104,13 @@ func LoadObjectByType(typ reflect.Type) (interface{}, bool) {
 func LoadObjectsByIface(iface reflect.Type) (out []interface{}, ok bool) {
 	// instances
 	for k, inst := range typedObjects {
-		if k.t.Implements(iface) {
+		if k.typ.Implements(iface) {
 			out = append(out, inst)
 		}
 	}
 	// providers
 	for k, provider := range typedProviders {
-		if k.t.Implements(iface) {
+		if k.typ.Implements(iface) {
 			obj := provider()
 			ResolveDeps(obj)
 			out = append(out, obj)
