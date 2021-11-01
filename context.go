@@ -3,6 +3,7 @@ package runv
 import (
 	"context"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 var _ Context = new(StateContext)
@@ -13,29 +14,48 @@ type StateContext struct {
 	logger *logrus.Logger
 }
 
-func newStateContext(ctx context.Context, logger *logrus.Logger, vars map[interface{}]interface{}) *StateContext {
+func NewStateContext(ctx context.Context, logger *logrus.Logger, vars map[interface{}]interface{}) *StateContext {
 	if vars == nil {
 		vars = make(map[interface{}]interface{}, 8)
 	}
 	return &StateContext{ctx: ctx, logger: logger, vars: vars}
 }
 
-func (s *StateContext) Context() context.Context {
-	return s.ctx
+func NewStateContext1(ctx context.Context, vars map[interface{}]interface{}) *StateContext {
+	if vars == nil {
+		vars = make(map[interface{}]interface{}, 8)
+	}
+	return &StateContext{ctx: ctx, vars: vars}
 }
 
-func (s *StateContext) GetVarE(key interface{}) (value interface{}, ok bool) {
+func NewStateContext2(ctx context.Context) *StateContext {
+	return &StateContext{ctx: ctx, vars: make(map[interface{}]interface{}, 0)}
+}
+
+func (s *StateContext) Deadline() (deadline time.Time, ok bool) {
+	return s.ctx.Deadline()
+}
+
+func (s *StateContext) Done() <-chan struct{} {
+	return s.ctx.Done()
+}
+
+func (s *StateContext) Err() error {
+	return s.ctx.Err()
+}
+
+func (s *StateContext) Value(key interface{}) interface{} {
+	v, _ := s.ValueE(key)
+	return v
+}
+
+func (s *StateContext) ValueE(key interface{}) (value interface{}, ok bool) {
 	value, ok = s.vars[key]
 	if ok {
 		return value, true
 	}
 	value = s.ctx.Value(key)
 	return value, nil == value
-}
-
-func (s *StateContext) GetVar(key interface{}) (value interface{}) {
-	value, _ = s.GetVarE(key)
-	return
 }
 
 func (s *StateContext) Log() *logrus.Logger {
