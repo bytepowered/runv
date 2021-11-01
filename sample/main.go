@@ -18,12 +18,12 @@ func newJSONLogger() *logrus.Logger {
 }
 
 func main() {
-	runv.AddProvider(newJSONLogger)
-	runv.AddPrepare(func() error {
+	runv.Provider(newJSONLogger)
+	runv.AddPrepareHook(func() error {
 		// do prepare
 		return nil
 	})
-	runv.AddComponent(new(CompA))
-	runv.AddComponent(new(CompB))
+	runv.Add(new(CompA))
+	runv.Add(new(CompB))
 	runv.RunV()
 }
