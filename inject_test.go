@@ -1,4 +1,4 @@
-package runv
+package inject
 
 import (
 	"fmt"
@@ -15,7 +15,15 @@ type DIStructA struct {
 }
 
 func (b *DIStructA) Tag() string {
-	return "tag: a"
+	return "A"
+}
+
+type DIStructAA struct {
+	Name string
+}
+
+func (b *DIStructAA) Tag() string {
+	return "AA"
 }
 
 type DIStructB struct {
@@ -27,12 +35,12 @@ func (b *DIStructB) Tag() string {
 	return "tag: b"
 }
 
-//func (b *DIStructB) SetA(a *DIStructA) {
-//	fmt.Println("set: a.Name: " + a.Name)
-//	b.RefA = a
-//}
+func (b *DIStructB) SetA(a *DIStructA) {
+	fmt.Println("set: a.Name: " + a.Name)
+	b.RefA = a
+}
 
-func (b *DIStructB) SetMultiA(a []DIStructTag) {
+func (b *DIStructB) InjectMulti(a []DIStructTag) {
 	for _, t := range a {
 		if t != nil {
 			fmt.Println("set multi: tag= " + t.Tag())
@@ -57,30 +65,30 @@ type DIStructZ struct {
 	RefY *DIStructY
 }
 
-func (y *DIStructZ) SetX(x *DIStructY) {
+func (y *DIStructZ) SetY(x *DIStructY) {
 	y.RefY = x
 }
 
 func TestInjectByObject(t *testing.T) {
-	cmpA := &DIStructA{Name: "DIStructA"}
-	diRegisterInstance(cmpA)
+	RegisterObject(&DIStructA{Name: "DIStructA"})
+	RegisterObject(&DIStructAA{Name: "DIStructAA"})
 	cmpB := &DIStructB{Name: "DIStructB"}
-	diInjectDepens(cmpB)
-	//assert.NotNil(t, cmpB.RefA)
-	//assert.Equal(t, cmpB.RefA.Name, cmpA.Name)
+	ResolveDeps(cmpB)
+	assert.NotNil(t, cmpB.RefA)
+	assert.Equal(t, "DIStructA", cmpB.RefA.Name)
 }
 
 func TestInjectByProvider(t *testing.T) {
-	diRegisterProvider(func() *DIStructX {
+	RegisterProvider(func() *DIStructX {
 		return &DIStructX{NameX: "xxxx"}
 	})
-	diRegisterProvider(func() *DIStructY {
+	RegisterProvider(func() *DIStructY {
 		return &DIStructY{NameY: "yyyy"}
 	})
 	cmpZ := &DIStructZ{}
-	diInjectDepens(cmpZ)
+	ResolveDeps(cmpZ)
 	assert.NotNil(t, cmpZ.RefY)
-	assert.Equal(t, cmpZ.RefY.NameY, "yyyy")
-	assert.NotNil(t, cmpZ.RefY.RefX)
-	assert.Equal(t, cmpZ.RefY.RefX.NameX, "xxxx")
+	//assert.Equal(t, cmpZ.RefY.NameY, "yyyy")
+	//assert.NotNil(t, cmpZ.RefY.RefX)
+	//assert.Equal(t, cmpZ.RefY.RefX.NameX, "xxxx")
 }
