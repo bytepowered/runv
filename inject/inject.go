@@ -20,9 +20,12 @@ func (k objectkey) String() string {
 	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
 }
 
+func mkey(typ reflect.Type) objectkey {
+	return objectkey{typ: typ, name: typ.Name()}
+}
+
 func RegisterObject(obj interface{}) {
-	typ := reflect.TypeOf(obj)
-	typedObjects[objectkey{typ: typ, name: typ.Name()}] = obj
+	typedObjects[mkey(reflect.TypeOf(obj))] = obj
 }
 
 func RegisterProvider(provider interface{}) {
@@ -34,8 +37,7 @@ func RegisterProvider(provider interface{}) {
 		panic(fmt.Sprintf("invalid return values of provider func, num: %d", protyp.NumOut()))
 	}
 	proval := reflect.ValueOf(provider)
-	elem := protyp.Out(0)
-	typedProviders[objectkey{typ: elem, name: elem.Name()}] = func() interface{} {
+	typedProviders[mkey(protyp.Out(0))] = func() interface{} {
 		return proval.Call(nil)[0].Interface()
 	}
 }
@@ -88,7 +90,7 @@ func injectSetter(meta reflect.Type, invoker reflect.Value) {
 
 func LoadObjectByType(typ reflect.Type) (interface{}, bool) {
 	// instances
-	key := objectkey{typ: typ, name: typ.Name()}
+	key := mkey(typ)
 	if ref, ok := typedObjects[key]; ok {
 		return ref, true
 	}
