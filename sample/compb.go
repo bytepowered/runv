@@ -1,29 +1,31 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/bytepowered/runv"
 	"github.com/sirupsen/logrus"
-	"os"
 )
 
-func newJSONLogger() *logrus.Logger {
-	return &logrus.Logger{
-		Out:          os.Stderr,
-		Formatter:    new(logrus.JSONFormatter),
-		Hooks:        make(logrus.LevelHooks),
-		Level:        logrus.DebugLevel,
-		ExitFunc:     os.Exit,
-		ReportCaller: false,
-	}
+var _ runv.Component = new(CompB)
+
+type CompB struct {
 }
 
-func main() {
-	runv.Provider(newJSONLogger)
-	runv.AddPrepareHook(func() error {
-		// do prepare
-		return nil
-	})
-	runv.Add(new(CompA))
-	runv.Add(new(CompB))
-	runv.RunV()
+func (c *CompB) SetCompA(a *CompA) {
+	logrus.Info("di set: " + a.Name())
+}
+
+func (c *CompB) InjectCompA(a *CompA) {
+	logrus.Info("di inject: " + a.Name())
+}
+
+func (c *CompB) Startup(ctx context.Context) error {
+	fmt.Println("startup: B")
+	return nil
+}
+
+func (c *CompB) Shutdown(ctx context.Context) error {
+	fmt.Println("shutdown: B")
+	return nil
 }
