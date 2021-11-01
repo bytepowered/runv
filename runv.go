@@ -3,6 +3,7 @@ package runv
 import (
 	"context"
 	"fmt"
+	"github.com/bytepowered/runv/inject"
 	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
@@ -40,7 +41,7 @@ func (w *wrapper) SetLogger(logger *logrus.Logger) {
 }
 
 func init() {
-	diRegisterProvider(logrus.New)
+	inject.RegisterProvider(logrus.New)
 }
 
 func SetAppAwaitFunc(saf func() <-chan os.Signal) {
@@ -54,9 +55,9 @@ func AddPrepareHook(p func() error) {
 
 // Provider 添加Prototype对象的Provider函数
 func Provider(providerFunc interface{}) {
-	diRegisterProvider(providerFunc)
+	inject.RegisterProvider(providerFunc)
 	// update app deps
-	diInjectDepens(app)
+	inject.ResolveDeps(app)
 }
 
 // Add 添加单例组件
@@ -71,9 +72,9 @@ func Add(obj interface{}) {
 		app.states = append(app.states, state)
 	}
 	app.refs = append(app.refs, obj)
-	diRegisterInstance(obj)
+	inject.RegisterObject(obj)
 	// update app deps
-	diInjectDepens(app)
+	inject.ResolveDeps(app)
 }
 
 func RunV() {
@@ -85,7 +86,7 @@ func RunV() {
 	}
 	// inject deps
 	for _, obj := range app.refs {
-		diInjectDepens(obj)
+		inject.ResolveDeps(obj)
 	}
 	app.logger.Infof("app: init")
 	// init
