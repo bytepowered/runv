@@ -88,7 +88,7 @@ func TestInjectByProvider(t *testing.T) {
 	cmpZ := &DIStructZ{}
 	ResolveDeps(cmpZ)
 	assert.NotNil(t, cmpZ.RefY)
-	//assert.Equal(t, cmpZ.RefY.NameY, "yyyy")
-	//assert.NotNil(t, cmpZ.RefY.RefX)
-	//assert.Equal(t, cmpZ.RefY.RefX.NameX, "xxxx")
+	assert.Equal(t, cmpZ.RefY.NameY, "yyyy")
+	assert.NotNil(t, cmpZ.RefY.RefX)
+	assert.Equal(t, cmpZ.RefY.RefX.NameX, "xxxx")
 }
