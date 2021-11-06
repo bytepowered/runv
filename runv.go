@@ -3,12 +3,15 @@ package runv
 import (
 	"context"
 	"fmt"
-	"github.com/bytepowered/runv/inject"
-	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+)
+
+import (
+	"github.com/bytepowered/runv/inject"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -17,7 +20,8 @@ var (
 		initables:  make([]Initable, 0, 4),
 		components: make([]Component, 0, 4),
 		states:     make([]StateComponent, 0, 4),
-		prepares:   make([]func() error, 0, 4),
+		prehooks:   make([]func() error, 0, 4),
+		posthooks:  make([]func() error, 0, 4),
 	}
 	appAwait = func() <-chan os.Signal {
 		sig := make(chan os.Signal, 1)
@@ -28,7 +32,8 @@ var (
 
 type wrapper struct {
 	logger     *logrus.Logger
-	prepares   []func() error
+	prehooks   []func() error
+	posthooks  []func() error
 	initables  []Initable
 	components []Component
 	states     []StateComponent
@@ -41,16 +46,28 @@ func (w *wrapper) SetLogger(logger *logrus.Logger) {
 }
 
 func init() {
-	inject.RegisterProvider(logrus.New)
+	inject.RegisterProvider(&logrus.Logger{
+		Out:          os.Stderr,
+		Formatter:    new(logrus.JSONFormatter),
+		Hooks:        make(logrus.LevelHooks),
+		Level:        logrus.DebugLevel,
+		ExitFunc:     os.Exit,
+		ReportCaller: false,
+	})
 }
 
 func SetAppAwaitFunc(saf func() <-chan os.Signal) {
 	appAwait = saf
 }
 
-// AddPrepareHook 添加Prepare函数
-func AddPrepareHook(p func() error) {
-	app.prepares = append(app.prepares, p)
+// AddPrepareHook 添加PrepareHook函数
+func AddPrepareHook(hook func() error) {
+	app.prehooks = append(app.prehooks, hook)
+}
+
+// AddPostHook 添加PostHook函数
+func AddPostHook(hook func() error) {
+	app.posthooks = append(app.posthooks, hook)
 }
 
 // Provider 添加Prototype对象的Provider函数
@@ -62,14 +79,24 @@ func Provider(providerFunc interface{}) {
 
 // Add 添加单例组件
 func Add(obj interface{}) {
+	if obj == nil {
+		panic("app: add a nil object")
+	}
+	hits := 0
 	if init, ok := obj.(Initable); ok {
+		hits++
 		app.initables = append(app.initables, init)
 	}
 	if comp, ok := obj.(Component); ok {
+		hits++
 		app.components = append(app.components, comp)
 	}
 	if state, ok := obj.(StateComponent); ok {
+		hits++
 		app.states = append(app.states, state)
+	}
+	if hits == 0 {
+		panic(fmt.Errorf("app: add an unsupported component, type: %T ", obj))
 	}
 	app.refs = append(app.refs, obj)
 	inject.RegisterObject(obj)
@@ -78,10 +105,10 @@ func Add(obj interface{}) {
 }
 
 func RunV() {
-	// prepare
-	for _, pre := range app.prepares {
-		if err := pre(); err != nil {
-			app.logger.Fatalf("app: prepare, %s", err)
+	// prepare hooks
+	for _, prehook := range app.prehooks {
+		if err := prehook(); err != nil {
+			app.logger.Fatalf("app: prepare hook error: %s", err)
 		}
 	}
 	// inject deps
@@ -92,7 +119,7 @@ func RunV() {
 	// init
 	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
-			app.logger.Fatalf("init failed: %s", err)
+			app.logger.Fatalf("app: init error: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
@@ -103,9 +130,15 @@ func RunV() {
 	if err := startup(goctx); err != nil {
 		app.logger.Fatalf("app startup, error: %s", err)
 	}
-	// serve
+	// serve with setup
 	if err := serve(goctx); err != nil {
 		app.logger.Fatalf("app serve, error: %s", err)
+	}
+	// post hook
+	for _, posthook := range app.posthooks {
+		if err := posthook(); err != nil {
+			app.logger.Fatalf("app: post hook error: %s", err)
+		}
 	}
 	app.logger.Infof("app: run, waiting signals...")
 	<-appAwait()
