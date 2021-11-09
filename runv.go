@@ -16,7 +16,7 @@ import (
 
 var (
 	w = &wrapper{
-		logger:     logrus.New(),
+		logger:     NewJSONLogger(),
 		initables:  make([]Initable, 0, 4),
 		components: make([]Component, 0, 4),
 		states:     make([]StateComponent, 0, 4),
@@ -42,6 +42,10 @@ type wrapper struct {
 
 // SetLogger 通过DI注入Logger实现
 func (w *wrapper) SetLogger(logger *logrus.Logger) {
+	w.logger = logger
+}
+
+func SetLogger(logger *logrus.Logger) {
 	w.logger = logger
 }
 
