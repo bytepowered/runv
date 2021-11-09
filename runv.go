@@ -71,21 +71,14 @@ func Add(obj interface{}) {
 	if obj == nil {
 		panic("app: add a nil object")
 	}
-	hits := 0
 	if init, ok := obj.(Initable); ok {
-		hits++
 		w.initables = append(w.initables, init)
 	}
 	if comp, ok := obj.(Component); ok {
-		hits++
 		w.components = append(w.components, comp)
 	}
 	if state, ok := obj.(StateComponent); ok {
-		hits++
 		w.states = append(w.states, state)
-	}
-	if hits == 0 {
-		panic(fmt.Errorf("app: add an unsupported component, type: %T ", obj))
 	}
 	w.refs = append(w.refs, obj)
 	inject.RegisterObject(obj)
