@@ -15,24 +15,24 @@ func (k cntkey) String() string {
 	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
 }
 
-type Container struct {
+type Containerd struct {
 	objects   map[cntkey]interface{}
 	providers map[cntkey]func() interface{}
-	hooks     []func(*Container, interface{})
+	hooks     []func(*Containerd, interface{})
 }
 
-func NewContainer() *Container {
-	return &Container{
+func NewContainer() *Containerd {
+	return &Containerd{
 		objects:   make(map[cntkey]interface{}, 4),
 		providers: make(map[cntkey]func() interface{}, 4),
 	}
 }
 
-func (c *Container) AddHook(hook func(*Container, interface{})) {
+func (c *Containerd) AddHook(hook func(*Containerd, interface{})) {
 	c.hooks = append(c.hooks, hook)
 }
 
-func (c *Container) Register(in interface{}) {
+func (c *Containerd) Register(in interface{}) {
 	intyp := reflect.TypeOf(in)
 	if intyp.Kind() == reflect.Func {
 		c.provider(intyp, in)
@@ -44,7 +44,7 @@ func (c *Container) Register(in interface{}) {
 	}
 }
 
-func (c *Container) Resolve(host interface{}) {
+func (c *Containerd) Resolve(host interface{}) {
 	meta := reflect.TypeOf(host)
 	invoker := reflect.ValueOf(host)
 	switch meta.Kind() {
@@ -54,7 +54,7 @@ func (c *Container) Resolve(host interface{}) {
 	// TODO 通过结构体字段注入
 }
 
-func (c *Container) LoadByType(typ reflect.Type) (interface{}, bool) {
+func (c *Containerd) LoadByType(typ reflect.Type) (interface{}, bool) {
 	// instances
 	key := mkey(typ)
 	if ref, ok := c.objects[key]; ok {
@@ -69,7 +69,7 @@ func (c *Container) LoadByType(typ reflect.Type) (interface{}, bool) {
 	return nil, false
 }
 
-func (c *Container) LoadByIface(iface reflect.Type) (out []interface{}, ok bool) {
+func (c *Containerd) LoadByIface(iface reflect.Type) (out []interface{}, ok bool) {
 	// instances
 	for k, inst := range c.objects {
 		if k.typ.Implements(iface) {
@@ -87,11 +87,11 @@ func (c *Container) LoadByIface(iface reflect.Type) (out []interface{}, ok bool)
 	return out, true
 }
 
-func (c *Container) object(objtyp reflect.Type, obj interface{}) {
+func (c *Containerd) object(objtyp reflect.Type, obj interface{}) {
 	c.objects[mkey(objtyp)] = obj
 }
 
-func (c *Container) provider(protyp reflect.Type, pfunc interface{}) {
+func (c *Containerd) provider(protyp reflect.Type, pfunc interface{}) {
 	if protyp.NumOut() != 1 {
 		panic(fmt.Sprintf("invalid return values of provider func, num: %d", protyp.NumOut()))
 	}
@@ -101,7 +101,7 @@ func (c *Container) provider(protyp reflect.Type, pfunc interface{}) {
 	}
 }
 
-func (c *Container) injectSetter(meta reflect.Type, invoker reflect.Value) {
+func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
 	// 通过Setter函数注入
 	for i := 0; i < meta.NumMethod(); i++ {
 		mType := meta.Method(i)

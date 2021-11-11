@@ -35,12 +35,12 @@ var (
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		return sig
 	}
-	appContainer = NewContainer()
-	appLogger    = NewJSONLogger()
+	appContainerd = NewContainer()
+	appLogger     = NewJSONLogger()
 )
 
 func init() {
-	appContainer.AddHook(func(container *Container, _ interface{}) {
+	appContainerd.AddHook(func(container *Containerd, _ interface{}) {
 		container.Resolve(app)
 	})
 }
@@ -63,9 +63,20 @@ func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
 }
 
-// Provider 添加Prototype对象的Provider函数
 func Provider(providerFunc interface{}) {
-	appContainer.Register(providerFunc)
+	Register(providerFunc)
+}
+
+func Register(in interface{}) {
+	appContainerd.Register(in)
+}
+
+func Resolve(in interface{}) {
+	appContainerd.Resolve(in)
+}
+
+func Container() *Containerd {
+	return appContainerd
 }
 
 // Add 添加单例组件
@@ -86,7 +97,7 @@ func Add(in interface{}) {
 		app.servables = append(app.servables, servable)
 	}
 	app.objects = append(app.objects, in)
-	appContainer.Register(in)
+	Register(in)
 }
 
 func RunV() {
@@ -96,9 +107,9 @@ func RunV() {
 			appLogger.Fatalf("app: prepare hook error: %s", err)
 		}
 	}
-	// inject deps
+	// resolve deps
 	for _, obj := range app.objects {
-		appContainer.Resolve(obj)
+		Resolve(obj)
 	}
 	appLogger.Infof("app: init")
 	// init
