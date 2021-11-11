@@ -54,7 +54,15 @@ func (c *Containerd) Resolve(host interface{}) {
 	// TODO 通过结构体字段注入
 }
 
-func (c *Containerd) LoadByType(typ reflect.Type) (interface{}, bool) {
+func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
+	v, ok := c.LoadObjectE(typ)
+	if ok {
+		return v
+	}
+	return nil
+}
+
+func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 	// instances
 	key := mkey(typ)
 	if ref, ok := c.objects[key]; ok {
@@ -69,8 +77,19 @@ func (c *Containerd) LoadByType(typ reflect.Type) (interface{}, bool) {
 	return nil, false
 }
 
-func (c *Containerd) LoadByIface(iface reflect.Type) (out []interface{}, ok bool) {
-	// instances
+func (c *Containerd) LoadTypeObjects(iface reflect.Type) []interface{} {
+	o, ok := c.LoadTypeObjectsE(iface)
+	if ok {
+		return o
+	}
+	return nil
+}
+
+func (c *Containerd) LoadTypeObjectsE(iface reflect.Type) (out []interface{}, ok bool) {
+	if iface.Kind() != reflect.Interface {
+		panic(fmt.Errorf("iface muse be interface type, was: %s", iface))
+	}
+	// objects
 	for k, inst := range c.objects {
 		if k.typ.Implements(iface) {
 			out = append(out, inst)
@@ -115,7 +134,7 @@ func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
 		aType := mType.Type.In(1)
 		switch aType.Kind() {
 		case reflect.Ptr:
-			if obj, ok := c.LoadByType(aType); ok {
+			if obj, ok := c.LoadObjectE(aType); ok {
 				invoker.Method(i).Call([]reflect.Value{reflect.ValueOf(obj)})
 			}
 
@@ -124,7 +143,7 @@ func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
 				continue
 			}
 			eType := aType.Elem()
-			objs, ok := c.LoadByIface(eType)
+			objs, ok := c.LoadTypeObjectsE(eType)
 			if !ok {
 				continue
 			}
