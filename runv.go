@@ -10,102 +10,101 @@ import (
 )
 
 import (
-	"github.com/bytepowered/runv/inject"
 	"github.com/sirupsen/logrus"
 )
 
+type application struct {
+	prehooks  []func() error
+	posthooks []func() error
+	initables []Initable
+	liveness  []Liveness
+	servables []Servable
+	objects   []interface{}
+}
+
 var (
-	w = &wrapper{
-		logger:     NewJSONLogger(),
-		initables:  make([]Initable, 0, 4),
-		components: make([]Component, 0, 4),
-		states:     make([]StateComponent, 0, 4),
-		prehooks:   make([]func() error, 0, 4),
-		posthooks:  make([]func() error, 0, 4),
+	app = &application{
+		initables: make([]Initable, 0, 4),
+		liveness:  make([]Liveness, 0, 4),
+		servables: make([]Servable, 0, 4),
+		prehooks:  make([]func() error, 0, 4),
+		posthooks: make([]func() error, 0, 4),
 	}
-	appAwait = func() <-chan os.Signal {
+	appAwaitSignal = func() <-chan os.Signal {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		return sig
 	}
+	appContainer = NewContainer()
+	appLogger    = NewJSONLogger()
 )
 
-type wrapper struct {
-	logger     *logrus.Logger
-	prehooks   []func() error
-	posthooks  []func() error
-	initables  []Initable
-	components []Component
-	states     []StateComponent
-	refs       []interface{}
+func init() {
+	appContainer.AddHook(func(container *Container, _ interface{}) {
+		container.Resolve(app)
+	})
 }
 
-// SetLogger 通过DI注入Logger实现
-func (w *wrapper) SetLogger(logger *logrus.Logger) {
-	w.logger = logger
+func SetAppLogger(l *logrus.Logger) {
+	appLogger = l
 }
 
-func SetLogger(logger *logrus.Logger) {
-	w.logger = logger
-}
-
-func SetAppAwaitFunc(saf func() <-chan os.Signal) {
-	appAwait = saf
+func SetAppAwaitFunc(aaf func() <-chan os.Signal) {
+	appAwaitSignal = aaf
 }
 
 // AddPrepareHook 添加PrepareHook函数
 func AddPrepareHook(hook func() error) {
-	w.prehooks = append(w.prehooks, hook)
+	app.prehooks = append(app.prehooks, hook)
 }
 
 // AddPostHook 添加PostHook函数
 func AddPostHook(hook func() error) {
-	w.posthooks = append(w.posthooks, hook)
+	app.posthooks = append(app.posthooks, hook)
 }
 
 // Provider 添加Prototype对象的Provider函数
 func Provider(providerFunc interface{}) {
-	inject.RegisterProvider(providerFunc)
-	// update app deps
-	inject.ResolveDeps(w)
+	appContainer.Register(providerFunc)
 }
 
 // Add 添加单例组件
-func Add(obj interface{}) {
-	if obj == nil {
+func Add(in interface{}) {
+	if in == nil {
 		panic("app: add a nil object")
 	}
-	if init, ok := obj.(Initable); ok {
-		w.initables = append(w.initables, init)
+	if act, ok := in.(Activable); ok && !act.Active() {
+		return
 	}
-	if comp, ok := obj.(Component); ok {
-		w.components = append(w.components, comp)
+	if init, ok := in.(Initable); ok {
+		app.initables = append(app.initables, init)
 	}
-	if state, ok := obj.(StateComponent); ok {
-		w.states = append(w.states, state)
+	if live, ok := in.(Liveness); ok {
+		app.liveness = append(app.liveness, live)
 	}
-	w.refs = append(w.refs, obj)
-	inject.RegisterObject(obj)
-	// update app deps
-	inject.ResolveDeps(w)
+	if servable, ok := in.(Servable); ok {
+		app.servables = append(app.servables, servable)
+	}
+	app.objects = append(app.objects, in)
+	appContainer.Register(in)
 }
 
 func RunV() {
 	// prepare hooks
-	for _, prehook := range w.prehooks {
-		if err := prehook(); err != nil {
-			w.logger.Fatalf("app: prepare hook error: %s", err)
+	for _, hook := range app.prehooks {
+		if err := hook(); err != nil {
+			appLogger.Fatalf("app: prepare hook error: %s", err)
 		}
 	}
 	// inject deps
-	for _, obj := range w.refs {
-		inject.ResolveDeps(obj)
+	for _, obj := range app.objects {
+		appContainer.Resolve(obj)
 	}
-	w.logger.Infof("app: init")
+	appLogger.Infof("app: init")
 	// init
-	for _, obj := range w.initables {
+	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
-			w.logger.Fatalf("app: init error: %s", err)
+			appLogger.Fatalf("app: init error: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
@@ -114,37 +113,37 @@ func RunV() {
 	defer shutdown(goctx)
 	// startup
 	if err := startup(goctx); err != nil {
-		w.logger.Fatalf("app startup, error: %s", err)
+		appLogger.Fatalf("app: startup, error: %s", err)
 	}
 	// serve with setup
 	if err := serve(goctx); err != nil {
-		w.logger.Fatalf("app serve, error: %s", err)
+		appLogger.Fatalf("app: serve, error: %s", err)
 	}
 	// post hook
-	for _, posthook := range w.posthooks {
+	for _, posthook := range app.posthooks {
 		if err := posthook(); err != nil {
-			w.logger.Fatalf("app: post hook error: %s", err)
+			appLogger.Fatalf("app: post hook error: %s", err)
 		}
 	}
-	w.logger.Infof("app: run, waiting signals...")
-	<-appAwait()
+	appLogger.Infof("app: run, waiting signals...")
+	<-appAwaitSignal()
 }
 
 func shutdown(goctx context.Context) {
-	defer w.logger.Infof("app: terminaled")
-	for _, obj := range w.components {
-		ctx := NewStateContext(goctx, w.logger, nil)
+	defer appLogger.Infof("app: terminaled")
+	for _, obj := range app.liveness {
+		ctx := NewStateContext(goctx, appLogger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] shutdown...", obj), obj.Shutdown)
 		if err != nil {
-			w.logger.Errorf("shutdown error: %s", err)
+			appLogger.Errorf("shutdown error: %s", err)
 		}
 	}
 }
 
 func startup(goctx context.Context) error {
-	w.logger.Infof("app: startup")
-	for _, obj := range w.components {
-		ctx := NewStateContext(goctx, w.logger, nil)
+	appLogger.Infof("app: startup")
+	for _, obj := range app.liveness {
+		ctx := NewStateContext(goctx, appLogger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] startup...", obj), obj.Startup)
 		if err != nil {
 			return fmt.Errorf("[%T] startup error: %s", obj, err)
@@ -154,11 +153,11 @@ func startup(goctx context.Context) error {
 }
 
 func serve(goctx context.Context) error {
-	w.logger.Infof("app: serve")
-	for _, state := range w.states {
+	appLogger.Infof("app: serve")
+	for _, state := range app.servables {
 		ctx := state.Setup(goctx)
 		if statectx, ok := ctx.(*StateContext); ok && statectx.logger == nil {
-			statectx.logger = w.logger
+			statectx.logger = appLogger
 		}
 		err := metric1(ctx, fmt.Sprintf("component[%T] start serve...", state), state.Serve)
 		if err != nil {

@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	_ runv.Component      = new(CompA)
-	_ runv.StateComponent = new(CompA)
+	_ runv.Liveness = new(CompA)
+	_ runv.Servable = new(CompA)
 )
 
 type CompA struct {

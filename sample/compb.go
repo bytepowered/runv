@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var _ runv.Component = new(CompB)
+var _ runv.Liveness = new(CompB)
 
 type CompB struct {
 }
