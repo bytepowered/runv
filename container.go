@@ -77,17 +77,17 @@ func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 	return nil, false
 }
 
-func (c *Containerd) LoadTypeObjects(iface reflect.Type) []interface{} {
-	o, ok := c.LoadTypeObjectsE(iface)
+func (c *Containerd) LoadTypeds(iface reflect.Type) []interface{} {
+	o, ok := c.LoadTypedsE(iface)
 	if ok {
 		return o
 	}
 	return nil
 }
 
-func (c *Containerd) LoadTypeObjectsE(iface reflect.Type) (out []interface{}, ok bool) {
+func (c *Containerd) LoadTypedsE(iface reflect.Type) (out []interface{}, ok bool) {
 	if iface.Kind() != reflect.Interface {
-		panic(fmt.Errorf("iface muse be interface type, was: %s", iface))
+		panic(fmt.Errorf("'iface' muse be interface{} type, was: %s", iface))
 	}
 	// objects
 	for k, inst := range c.objects {
@@ -143,7 +143,7 @@ func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
 				continue
 			}
 			eType := aType.Elem()
-			objs, ok := c.LoadTypeObjectsE(eType)
+			objs, ok := c.LoadTypedsE(eType)
 			if !ok {
 				continue
 			}

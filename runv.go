@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
 	"time"
 )
@@ -75,6 +76,14 @@ func Resolve(in interface{}) {
 	appContainerd.Resolve(in)
 }
 
+func LoadObjects(typ reflect.Type) interface{} {
+	return appContainerd.LoadObject(typ)
+}
+
+func LoadTypes(iface reflect.Type) interface{} {
+	return appContainerd.LoadTypeds(iface)
+}
+
 func Container() *Containerd {
 	return appContainerd
 }
@@ -85,6 +94,7 @@ func Add(in interface{}) {
 		panic("app: add a nil object")
 	}
 	if act, ok := in.(Activable); ok && !act.Active() {
+		appLogger.Infof("object is not active, ignore. object: %T, %s", in, in)
 		return
 	}
 	if init, ok := in.(Initable); ok {
