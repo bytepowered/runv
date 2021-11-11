@@ -150,6 +150,17 @@ func RunV() {
 	<-appAwaitSignal()
 }
 
+func NewJSONLogger() *logrus.Logger {
+	return &logrus.Logger{
+		Out:          os.Stderr,
+		Formatter:    new(logrus.JSONFormatter),
+		Hooks:        make(logrus.LevelHooks),
+		Level:        logrus.DebugLevel,
+		ExitFunc:     os.Exit,
+		ReportCaller: false,
+	}
+}
+
 func shutdown(goctx context.Context) {
 	defer appLogger.Infof("app: terminaled")
 	for _, obj := range app.liveness {
