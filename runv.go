@@ -31,31 +31,31 @@ var (
 		prehooks:  make([]func() error, 0, 4),
 		posthooks: make([]func() error, 0, 4),
 	}
-	appAwaitSignal = func() <-chan os.Signal {
+	signalf = func() <-chan os.Signal {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		return sig
 	}
-	appContainerd = NewContainer()
-	appLogger     = NewJSONLogger()
+	containerd = NewContainerd()
+	logger     = NewJSONLogger()
 )
 
 func init() {
-	appContainerd.AddHook(func(container *Containerd, _ interface{}) {
+	containerd.AddHook(func(container *Containerd, _ interface{}) {
 		container.Resolve(app)
 	})
 }
 
-func SetAppLogger(l *logrus.Logger) {
-	appLogger = l
+func SetLogger(l *logrus.Logger) {
+	logger = l
 }
 
-func SetAppAwaitFunc(aaf func() <-chan os.Signal) {
-	appAwaitSignal = aaf
+func SetSignalFunc(aaf func() <-chan os.Signal) {
+	signalf = aaf
 }
 
-// AddPrepareHook 添加PrepareHook函数
-func AddPrepareHook(hook func() error) {
+// AddPreHook 添加PrepareHook函数
+func AddPreHook(hook func() error) {
 	app.prehooks = append(app.prehooks, hook)
 }
 
@@ -64,28 +64,28 @@ func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
 }
 
-func Provider(providerFunc interface{}) {
-	Register(providerFunc)
+func Provider(profun interface{}) {
+	containerd.Register(profun)
 }
 
-func Register(in interface{}) {
-	appContainerd.Register(in)
+func Register(obj interface{}) {
+	containerd.Register(obj)
 }
 
 func Resolve(in interface{}) {
-	appContainerd.Resolve(in)
+	containerd.Resolve(in)
 }
 
-func LoadObjects(typ reflect.Type) interface{} {
-	return appContainerd.LoadObject(typ)
+func LoadObject(typ reflect.Type) interface{} {
+	return containerd.LoadObject(typ)
 }
 
-func LoadTypes(iface reflect.Type) interface{} {
-	return appContainerd.LoadTypeds(iface)
+func LoadTyped(iface reflect.Type) []interface{} {
+	return containerd.LoadTyped(iface)
 }
 
 func Container() *Containerd {
-	return appContainerd
+	return containerd
 }
 
 // Add 添加单例组件
@@ -94,7 +94,7 @@ func Add(in interface{}) {
 		panic("app: add a nil object")
 	}
 	if act, ok := in.(Activable); ok && !act.Active() {
-		appLogger.Infof("object is not active, ignore. object: %T, %s", in, in)
+		logger.Infof("object is not active, ignore. object: %T, %s", in, in)
 		return
 	}
 	if init, ok := in.(Initable); ok {
@@ -103,29 +103,29 @@ func Add(in interface{}) {
 	if live, ok := in.(Liveness); ok {
 		app.liveness = append(app.liveness, live)
 	}
-	if servable, ok := in.(Servable); ok {
-		app.servables = append(app.servables, servable)
+	if serv, ok := in.(Servable); ok {
+		app.servables = append(app.servables, serv)
 	}
 	app.objects = append(app.objects, in)
-	Register(in)
+	containerd.Register(in)
 }
 
 func RunV() {
 	// prepare hooks
-	for _, hook := range app.prehooks {
-		if err := hook(); err != nil {
-			appLogger.Fatalf("app: prepare hook error: %s", err)
+	for _, prehook := range app.prehooks {
+		if err := prehook(); err != nil {
+			logger.Fatalf("app: pre-hook error: %s", err)
 		}
 	}
 	// resolve deps
 	for _, obj := range app.objects {
 		Resolve(obj)
 	}
-	appLogger.Infof("app: init")
+	logger.Infof("app: init")
 	// init
 	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
-			appLogger.Fatalf("app: init error: %s", err)
+			logger.Fatalf("app: init error: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
@@ -134,20 +134,20 @@ func RunV() {
 	defer shutdown(goctx)
 	// startup
 	if err := startup(goctx); err != nil {
-		appLogger.Fatalf("app: startup, error: %s", err)
+		logger.Fatalf("app: startup, error: %s", err)
 	}
 	// serve with setup
 	if err := serve(goctx); err != nil {
-		appLogger.Fatalf("app: serve, error: %s", err)
+		logger.Fatalf("app: serve, error: %s", err)
 	}
 	// post hook
 	for _, posthook := range app.posthooks {
 		if err := posthook(); err != nil {
-			appLogger.Fatalf("app: post hook error: %s", err)
+			logger.Fatalf("app: post-hook error: %s", err)
 		}
 	}
-	appLogger.Infof("app: run, waiting signals...")
-	<-appAwaitSignal()
+	logger.Infof("app: run, waiting signals...")
+	<-signalf()
 }
 
 func NewJSONLogger() *logrus.Logger {
@@ -162,20 +162,20 @@ func NewJSONLogger() *logrus.Logger {
 }
 
 func shutdown(goctx context.Context) {
-	defer appLogger.Infof("app: terminaled")
+	defer logger.Infof("app: terminaled")
 	for _, obj := range app.liveness {
-		ctx := NewStateContext(goctx, appLogger, nil)
+		ctx := NewContextV(goctx, logger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] shutdown...", obj), obj.Shutdown)
 		if err != nil {
-			appLogger.Errorf("shutdown error: %s", err)
+			logger.Errorf("shutdown error: %s", err)
 		}
 	}
 }
 
 func startup(goctx context.Context) error {
-	appLogger.Infof("app: startup")
+	logger.Infof("app: startup")
 	for _, obj := range app.liveness {
-		ctx := NewStateContext(goctx, appLogger, nil)
+		ctx := NewContextV(goctx, logger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] startup...", obj), obj.Startup)
 		if err != nil {
 			return fmt.Errorf("[%T] startup error: %s", obj, err)
@@ -185,11 +185,11 @@ func startup(goctx context.Context) error {
 }
 
 func serve(goctx context.Context) error {
-	appLogger.Infof("app: serve")
+	logger.Infof("app: serve")
 	for _, state := range app.servables {
 		ctx := state.Setup(goctx)
-		if statectx, ok := ctx.(*StateContext); ok && statectx.logger == nil {
-			statectx.logger = appLogger
+		if statectx, ok := ctx.(*ContextV); ok && statectx.logger == nil {
+			statectx.logger = logger
 		}
 		err := metric1(ctx, fmt.Sprintf("component[%T] start serve...", state), state.Serve)
 		if err != nil {

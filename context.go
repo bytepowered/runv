@@ -6,47 +6,47 @@ import (
 	"time"
 )
 
-var _ Context = new(StateContext)
+var _ Context = new(ContextV)
 
-type StateContext struct {
+type ContextV struct {
 	ctx    context.Context
 	vars   map[interface{}]interface{}
 	logger *logrus.Logger
 }
 
-func NewStateContext(ctx context.Context, logger *logrus.Logger, vars map[interface{}]interface{}) *StateContext {
+func NewContextV(ctx context.Context, logger *logrus.Logger, vars map[interface{}]interface{}) *ContextV {
 	if vars == nil {
 		vars = make(map[interface{}]interface{}, 0)
 	}
-	return &StateContext{ctx: ctx, logger: logger, vars: vars}
+	return &ContextV{ctx: ctx, logger: logger, vars: vars}
 }
 
-func NewStateContext1(ctx context.Context, vars map[interface{}]interface{}) *StateContext {
-	return NewStateContext(ctx, nil, vars)
+func NewContextVX(ctx context.Context, vars map[interface{}]interface{}) *ContextV {
+	return NewContextV(ctx, nil, vars)
 }
 
-func NewStateContext2(ctx context.Context) *StateContext {
-	return NewStateContext(ctx, nil, nil)
+func NewContextV0(ctx context.Context) *ContextV {
+	return NewContextV(ctx, nil, nil)
 }
 
-func (s *StateContext) Deadline() (deadline time.Time, ok bool) {
+func (s *ContextV) Deadline() (deadline time.Time, ok bool) {
 	return s.ctx.Deadline()
 }
 
-func (s *StateContext) Done() <-chan struct{} {
+func (s *ContextV) Done() <-chan struct{} {
 	return s.ctx.Done()
 }
 
-func (s *StateContext) Err() error {
+func (s *ContextV) Err() error {
 	return s.ctx.Err()
 }
 
-func (s *StateContext) Value(key interface{}) interface{} {
+func (s *ContextV) Value(key interface{}) interface{} {
 	v, _ := s.ValueE(key)
 	return v
 }
 
-func (s *StateContext) ValueE(key interface{}) (value interface{}, ok bool) {
+func (s *ContextV) ValueE(key interface{}) (value interface{}, ok bool) {
 	value, ok = s.vars[key]
 	if ok {
 		return value, true
@@ -55,6 +55,6 @@ func (s *StateContext) ValueE(key interface{}) (value interface{}, ok bool) {
 	return value, nil == value
 }
 
-func (s *StateContext) Log() *logrus.Logger {
+func (s *ContextV) Log() *logrus.Logger {
 	return s.logger
 }

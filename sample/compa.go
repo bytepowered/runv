@@ -24,7 +24,7 @@ func (c *CompA) Startup(ctx context.Context) error {
 }
 
 func (c *CompA) Setup(ctx context.Context) runv.Context {
-	return runv.NewStateContext2(ctx)
+	return runv.NewContextV0(ctx)
 }
 
 func (c *CompA) Serve(ctx runv.Context) error {
