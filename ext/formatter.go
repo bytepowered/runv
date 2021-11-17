@@ -1,7 +1,9 @@
 package ext
 
 import (
+	"bytes"
 	"github.com/sirupsen/logrus"
+	"strconv"
 	"time"
 )
 
@@ -18,4 +20,14 @@ func (f *UTC8Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 func NewUTC8Formatter(origin logrus.Formatter) logrus.Formatter {
 	return &UTC8Formatter{origin}
+}
+
+func LogShortCaller(caller string, line int) string {
+	// github.com/bytepowered/webtrigger/impl/coding.(*WebsocketMessageAdapter).OnInit
+	sbytes := []byte(caller)
+	idx := bytes.LastIndexByte(sbytes, '(')
+	if idx <= 0 {
+		return caller
+	}
+	return string(sbytes[idx:]) + ":" + strconv.Itoa(line)
 }
