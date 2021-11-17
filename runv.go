@@ -50,16 +50,14 @@ func SetLogger(l *logrus.Logger) {
 	logger = l
 }
 
-func SetSignalFunc(aaf func() <-chan os.Signal) {
+func SetSignals(aaf func() <-chan os.Signal) {
 	signalf = aaf
 }
 
-// AddPreHook 添加PrepareHook函数
 func AddPreHook(hook func() error) {
 	app.prehooks = append(app.prehooks, hook)
 }
 
-// AddPostHook 添加PostHook函数
 func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
 }
@@ -90,9 +88,7 @@ func Container() *Containerd {
 
 // Add 添加单例组件
 func Add(in interface{}) {
-	if in == nil {
-		panic("app: add a nil object")
-	}
+	AssertNNil(in, "app: add a nil object")
 	if act, ok := in.(Activable); ok && !act.Active() {
 		logger.Infof("object is not active, ignore. object: %T, %s", in, in)
 		return
