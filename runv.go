@@ -50,6 +50,10 @@ func SetLogger(l *logrus.Logger) {
 	logger = l
 }
 
+func Log() *logrus.Logger {
+	return logger
+}
+
 func SetSignals(aaf func() <-chan os.Signal) {
 	signalf = aaf
 }
