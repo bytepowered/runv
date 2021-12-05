@@ -18,9 +18,9 @@ var (
 	}()
 )
 
-func Assert(shouldTrue bool, errmsg string, args ...interface{}) {
+func Assert(shouldTrue bool, message string, args ...interface{}) {
 	if assertable && !shouldTrue {
-		panic(fmt.Errorf(prefix+"%s", fmt.Sprintf(errmsg, args...)))
+		panic(fmt.Errorf(prefix+"%s", fmt.Sprintf(message, args...)))
 	}
 }
 
@@ -28,7 +28,13 @@ func Assert(shouldTrue bool, errmsg string, args ...interface{}) {
 // 如果输入值为非Nil，断言将触发panic，抛出错误消息（消息模板）。
 func AssertNil(v interface{}, message string, args ...interface{}) {
 	if assertable && !IsNil(v) {
-		panic(fmt.Errorf(prefix+"%s", fmt.Sprintf(message, args...)))
+		var perr error
+		if err, ok := v.(error); ok {
+			perr = fmt.Errorf(prefix+"%s %w", fmt.Sprintf(message, args...), err)
+		} else {
+			perr = fmt.Errorf(prefix+"%s", fmt.Sprintf(message, args...))
+		}
+		panic(perr)
 	}
 }
 
