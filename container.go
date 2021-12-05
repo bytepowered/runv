@@ -17,14 +17,15 @@ func (k TypedKey) String() string {
 
 type Containerd struct {
 	singletons map[TypedKey]interface{}        // 以Type为Key的实例列表
-	facroty    map[TypedKey]func() interface{} // 以Type为Key的工厂函数
+	factory    map[TypedKey]func() interface{} // 以Type为Key的工厂函数
+	objects    []interface{}                   // 对象实例列表
 	hooks      []func(*Containerd, interface{})
 }
 
 func NewContainerd() *Containerd {
 	return &Containerd{
 		singletons: make(map[TypedKey]interface{}, 4),
-		facroty:    make(map[TypedKey]func() interface{}, 4),
+		factory:    make(map[TypedKey]func() interface{}, 4),
 	}
 }
 
@@ -41,7 +42,12 @@ func (c *Containerd) Register(in interface{}) {
 		for _, hook := range c.hooks {
 			hook(c, in)
 		}
+		c.Add(in)
 	}
+}
+
+func (c *Containerd) Add(obj interface{}) {
+	c.objects = append(c.objects, obj)
 }
 
 func (c *Containerd) Resolve(host interface{}) {
@@ -69,9 +75,10 @@ func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 		return v, true
 	}
 	// by factory
-	if fty, ok := c.facroty[key]; ok {
+	if fty, ok := c.factory[key]; ok {
 		v := fty()
 		c.Resolve(v)
+		c.Add(v)
 		return v, true
 	}
 	return nil, false
@@ -96,11 +103,18 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 		}
 	}
 	// factory
-	for k, fty := range c.facroty {
+	for k, fty := range c.factory {
 		if k.typ.Implements(iface) {
 			v := fty()
 			c.Resolve(v)
+			c.Add(v)
 			out = append(out, v)
+		}
+	}
+	// objects
+	for _, obj := range c.objects {
+		if reflect.TypeOf(obj).Implements(iface) {
+			out = append(out, obj)
 		}
 	}
 	return out, true
@@ -115,7 +129,7 @@ func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
 		panic(fmt.Sprintf("invalid return values of factory func, num: %d", ftype.NumOut()))
 	}
 	funcv := reflect.ValueOf(factory)
-	c.facroty[makeTypedKey(ftype.Out(0))] = func() interface{} {
+	c.factory[makeTypedKey(ftype.Out(0))] = func() interface{} {
 		return funcv.Call(nil)[0].Interface()
 	}
 }

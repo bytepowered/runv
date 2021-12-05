@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"reflect"
 	"syscall"
 	"time"
 )
@@ -46,7 +45,6 @@ func init() {
 	})
 }
 
-// Add 添加单例组件
 func Add(in interface{}) {
 	AssertNNil(in, "app: add a nil object")
 	if dis, ok := in.(Disabled); ok {
@@ -81,7 +79,7 @@ func RunV() {
 	}
 	// resolve deps
 	for _, obj := range app.objects {
-		Resolve(obj)
+		Container().Resolve(obj)
 	}
 	logger.Infof("app: init")
 	// init
@@ -130,26 +128,6 @@ func AddPreHook(hook func() error) {
 
 func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
-}
-
-func Provider(profun interface{}) {
-	containerd.Register(profun)
-}
-
-func Register(obj interface{}) {
-	containerd.Register(obj)
-}
-
-func Resolve(in interface{}) {
-	containerd.Resolve(in)
-}
-
-func LoadObject(typ reflect.Type) interface{} {
-	return containerd.LoadObject(typ)
-}
-
-func LoadTyped(iface reflect.Type) []interface{} {
-	return containerd.LoadTyped(iface)
 }
 
 func Container() *Containerd {
