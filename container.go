@@ -6,25 +6,25 @@ import (
 	"strings"
 )
 
-type cntkey struct {
+type TypedKey struct {
 	typ  reflect.Type
 	name string
 }
 
-func (k cntkey) String() string {
+func (k TypedKey) String() string {
 	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
 }
 
 type Containerd struct {
-	objects   map[cntkey]interface{}
-	providers map[cntkey]func() interface{}
-	hooks     []func(*Containerd, interface{})
+	singletons map[TypedKey]interface{}        // 以Type为Key的实例列表
+	facroty    map[TypedKey]func() interface{} // 以Type为Key的工厂函数
+	hooks      []func(*Containerd, interface{})
 }
 
 func NewContainerd() *Containerd {
 	return &Containerd{
-		objects:   make(map[cntkey]interface{}, 4),
-		providers: make(map[cntkey]func() interface{}, 4),
+		singletons: make(map[TypedKey]interface{}, 4),
+		facroty:    make(map[TypedKey]func() interface{}, 4),
 	}
 }
 
@@ -35,9 +35,9 @@ func (c *Containerd) AddHook(hook func(*Containerd, interface{})) {
 func (c *Containerd) Register(in interface{}) {
 	intyp := reflect.TypeOf(in)
 	if intyp.Kind() == reflect.Func {
-		c.provider(intyp, in)
+		c.factoryOf(intyp, in)
 	} else {
-		c.object(intyp, in)
+		c.singletonOf(intyp, in)
 		for _, hook := range c.hooks {
 			hook(c, in)
 		}
@@ -49,7 +49,7 @@ func (c *Containerd) Resolve(host interface{}) {
 	invoker := reflect.ValueOf(host)
 	switch meta.Kind() {
 	case reflect.Ptr, reflect.Interface, reflect.Struct:
-		c.injectSetter(meta, invoker)
+		c.setter(meta, invoker)
 	}
 	// TODO 通过结构体字段注入
 }
@@ -63,16 +63,16 @@ func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
 }
 
 func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
-	// instances
-	key := mkcntkey(typ)
-	if ref, ok := c.objects[key]; ok {
-		return ref, true
+	// singletons
+	key := makeTypedKey(typ)
+	if v, ok := c.singletons[key]; ok {
+		return v, true
 	}
-	// by provider
-	if profun, ok := c.providers[key]; ok {
-		obj := profun()
-		c.Resolve(obj)
-		return obj, true
+	// by factory
+	if fty, ok := c.facroty[key]; ok {
+		v := fty()
+		c.Resolve(v)
+		return v, true
 	}
 	return nil, false
 }
@@ -85,42 +85,42 @@ func (c *Containerd) LoadTyped(iface reflect.Type) []interface{} {
 	return nil
 }
 
-func (c *Containerd) LoadTypedE(iface reflect.Type) (objs []interface{}, ok bool) {
+func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool) {
 	if iface.Kind() != reflect.Interface {
 		panic(fmt.Errorf("arg 'iface' muse be Interface, was: %s", iface))
 	}
-	// objects
-	for k, obj := range c.objects {
+	// singletons
+	for k, obj := range c.singletons {
 		if k.typ.Implements(iface) {
-			objs = append(objs, obj)
+			out = append(out, obj)
 		}
 	}
-	// providers
-	for k, profun := range c.providers {
+	// factory
+	for k, fty := range c.facroty {
 		if k.typ.Implements(iface) {
-			obj := profun()
-			c.Resolve(obj)
-			objs = append(objs, obj)
+			v := fty()
+			c.Resolve(v)
+			out = append(out, v)
 		}
 	}
-	return objs, true
+	return out, true
 }
 
-func (c *Containerd) object(objtyp reflect.Type, obj interface{}) {
-	c.objects[mkcntkey(objtyp)] = obj
+func (c *Containerd) singletonOf(objtyp reflect.Type, obj interface{}) {
+	c.singletons[makeTypedKey(objtyp)] = obj
 }
 
-func (c *Containerd) provider(protyp reflect.Type, pfunc interface{}) {
-	if protyp.NumOut() != 1 {
-		panic(fmt.Sprintf("invalid return values of provider func, num: %d", protyp.NumOut()))
+func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
+	if ftype.NumOut() != 1 {
+		panic(fmt.Sprintf("invalid return values of factory func, num: %d", ftype.NumOut()))
 	}
-	proval := reflect.ValueOf(pfunc)
-	c.providers[mkcntkey(protyp.Out(0))] = func() interface{} {
-		return proval.Call(nil)[0].Interface()
+	funcv := reflect.ValueOf(factory)
+	c.facroty[makeTypedKey(ftype.Out(0))] = func() interface{} {
+		return funcv.Call(nil)[0].Interface()
 	}
 }
 
-func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
+func (c *Containerd) setter(meta reflect.Type, invoker reflect.Value) {
 	// 通过Setter函数注入
 	for i := 0; i < meta.NumMethod(); i++ {
 		mthtyp := meta.Method(i)
@@ -156,6 +156,6 @@ func (c *Containerd) injectSetter(meta reflect.Type, invoker reflect.Value) {
 	}
 }
 
-func mkcntkey(typ reflect.Type) cntkey {
-	return cntkey{typ: typ, name: typ.Name()}
+func makeTypedKey(typ reflect.Type) TypedKey {
+	return TypedKey{typ: typ, name: typ.Name()}
 }

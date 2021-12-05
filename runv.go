@@ -46,50 +46,6 @@ func init() {
 	})
 }
 
-func SetLogger(l *logrus.Logger) {
-	logger = l
-}
-
-func Log() *logrus.Logger {
-	return logger
-}
-
-func SetSignals(aaf func() <-chan os.Signal) {
-	signalf = aaf
-}
-
-func AddPreHook(hook func() error) {
-	app.prehooks = append(app.prehooks, hook)
-}
-
-func AddPostHook(hook func() error) {
-	app.posthooks = append(app.posthooks, hook)
-}
-
-func Provider(profun interface{}) {
-	containerd.Register(profun)
-}
-
-func Register(obj interface{}) {
-	containerd.Register(obj)
-}
-
-func Resolve(in interface{}) {
-	containerd.Resolve(in)
-}
-
-func LoadObject(typ reflect.Type) interface{} {
-	return containerd.LoadObject(typ)
-}
-
-func LoadTyped(iface reflect.Type) []interface{} {
-	return containerd.LoadTyped(iface)
-}
-
-func Container() *Containerd {
-	return containerd
-}
-
 // Add 添加单例组件
 func Add(in interface{}) {
 	AssertNNil(in, "app: add a nil object")
@@ -154,6 +110,50 @@ func RunV() {
 	}
 	logger.Infof("app: run, waiting signals...")
 	<-signalf()
+}
+
+func SetLogger(l *logrus.Logger) {
+	logger = l
+}
+
+func Log() *logrus.Logger {
+	return logger
+}
+
+func SetSignals(aaf func() <-chan os.Signal) {
+	signalf = aaf
+}
+
+func AddPreHook(hook func() error) {
+	app.prehooks = append(app.prehooks, hook)
+}
+
+func AddPostHook(hook func() error) {
+	app.posthooks = append(app.posthooks, hook)
+}
+
+func Provider(profun interface{}) {
+	containerd.Register(profun)
+}
+
+func Register(obj interface{}) {
+	containerd.Register(obj)
+}
+
+func Resolve(in interface{}) {
+	containerd.Resolve(in)
+}
+
+func LoadObject(typ reflect.Type) interface{} {
+	return containerd.LoadObject(typ)
+}
+
+func LoadTyped(iface reflect.Type) []interface{} {
+	return containerd.LoadTyped(iface)
+}
+
+func Container() *Containerd {
+	return containerd
 }
 
 func NewJSONLogger() *logrus.Logger {
