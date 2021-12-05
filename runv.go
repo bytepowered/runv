@@ -93,8 +93,14 @@ func Container() *Containerd {
 // Add 添加单例组件
 func Add(in interface{}) {
 	AssertNNil(in, "app: add a nil object")
+	if dis, ok := in.(Disabled); ok {
+		if reason, is := dis.Disabled(); is {
+			logger.Infof("object is DISABLED, ignore. object: %T, reason: %s", in, reason)
+			return
+		}
+	}
 	if act, ok := in.(Activable); ok && !act.Active() {
-		logger.Infof("object is not active, ignore. object: %T, %s", in, in)
+		logger.Infof("object is NOT-ACTIVE, ignore. object: %T", in)
 		return
 	}
 	if init, ok := in.(Initable); ok {

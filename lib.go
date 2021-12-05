@@ -46,3 +46,7 @@ type Liveness interface {
 type Activable interface {
 	Active() bool
 }
+
+type Disabled interface {
+	Disabled() (reason string, disable bool)
+}
