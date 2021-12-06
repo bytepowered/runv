@@ -34,7 +34,7 @@ var (
 	}
 	signalf = func() <-chan os.Signal {
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		signal.Notify(sig, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 		return sig
 	}
 	containerd = NewContainerd()
