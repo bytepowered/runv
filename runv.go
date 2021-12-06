@@ -18,7 +18,8 @@ type application struct {
 	prehooks  []func() error
 	posthooks []func() error
 	initables []Initable
-	liveness  []Liveness
+	startups  []Startup
+	shutdown  []Shutdown
 	servables []Servable
 	objects   []interface{}
 }
@@ -26,7 +27,8 @@ type application struct {
 var (
 	app = &application{
 		initables: make([]Initable, 0, 4),
-		liveness:  make([]Liveness, 0, 4),
+		startups:  make([]Startup, 0, 4),
+		shutdown:  make([]Shutdown, 0, 4),
 		servables: make([]Servable, 0, 4),
 		prehooks:  make([]func() error, 0, 4),
 		posthooks: make([]func() error, 0, 4),
@@ -46,30 +48,41 @@ func init() {
 	})
 }
 
-// Add 添加单例组件
-func Add(in interface{}) {
-	AssertNNil(in, "app: add a nil object")
-	if dis, ok := in.(Disabled); ok {
+func Add(obj interface{}) {
+	AddState(obj)
+}
+
+func AddState(obj interface{}) {
+	AssertNNil(obj, "app: add a nil state object")
+	if dis, ok := obj.(Disabled); ok {
 		if reason, is := dis.Disabled(); is {
-			logger.Infof("object is DISABLED, ignore. object: %T, reason: %s", in, reason)
+			logger.Infof("object is DISABLED, ignore. object: %T, reason: %s", obj, reason)
 			return
 		}
 	}
-	if act, ok := in.(Activable); ok && !act.Active() {
-		logger.Infof("object is NOT-ACTIVE, ignore. object: %T", in)
+	if act, ok := obj.(Activable); ok && !act.Active() {
+		logger.Infof("object is NOT-ACTIVE, ignore. object: %T", obj)
 		return
 	}
-	if init, ok := in.(Initable); ok {
+	containerd.Register(obj)
+	AddObject(obj)
+}
+
+func AddObject(obj interface{}) {
+	AssertNNil(obj, "app: add a nil object")
+	if init, ok := obj.(Initable); ok {
 		app.initables = append(app.initables, init)
 	}
-	if live, ok := in.(Liveness); ok {
-		app.liveness = append(app.liveness, live)
+	if up, ok := obj.(Startup); ok {
+		app.startups = append(app.startups, up)
 	}
-	if serv, ok := in.(Servable); ok {
+	if down, ok := obj.(Shutdown); ok {
+		app.shutdown = append(app.shutdown, down)
+	}
+	if serv, ok := obj.(Servable); ok {
 		app.servables = append(app.servables, serv)
 	}
-	app.objects = append(app.objects, in)
-	containerd.Register(in)
+	app.objects = append(app.objects, obj)
 }
 
 func RunV() {
@@ -169,7 +182,7 @@ func NewJSONLogger() *logrus.Logger {
 
 func shutdown(goctx context.Context) {
 	defer logger.Infof("app: terminaled")
-	for _, obj := range app.liveness {
+	for _, obj := range app.shutdown {
 		ctx := NewContextV(goctx, logger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] shutdown...", obj), obj.Shutdown)
 		if err != nil {
@@ -180,7 +193,7 @@ func shutdown(goctx context.Context) {
 
 func startup(goctx context.Context) error {
 	logger.Infof("app: startup")
-	for _, obj := range app.liveness {
+	for _, obj := range app.startups {
 		ctx := NewContextV(goctx, logger, nil)
 		err := metric2(ctx, fmt.Sprintf("component[%T] startup...", obj), obj.Startup)
 		if err != nil {

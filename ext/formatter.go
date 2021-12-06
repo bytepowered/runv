@@ -7,19 +7,21 @@ import (
 	"time"
 )
 
-var _ logrus.Formatter = new(UTC8Formatter)
+var _ logrus.Formatter = new(UTCZoneFormatter)
 
-type UTC8Formatter struct {
+type UTCZoneFormatter struct {
+	name string
+	zone time.Duration
 	logrus.Formatter
 }
 
-func (f *UTC8Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	entry.Time = entry.Time.In(time.FixedZone("UTC+8", int((8 * time.Hour).Seconds())))
+func (f *UTCZoneFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+	entry.Time = entry.Time.In(time.FixedZone(f.name, int((f.zone * time.Hour).Seconds())))
 	return f.Formatter.Format(entry)
 }
 
-func NewUTC8Formatter(origin logrus.Formatter) logrus.Formatter {
-	return &UTC8Formatter{origin}
+func NewUTCZoneFormatter(origin logrus.Formatter, name string, zone int) logrus.Formatter {
+	return &UTCZoneFormatter{Formatter: origin, name: name, zone: time.Duration(zone)}
 }
 
 func LogShortCaller(caller string, line int) string {
