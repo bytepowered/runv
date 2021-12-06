@@ -6,26 +6,32 @@ import (
 	"strings"
 )
 
-type TypedKey struct {
+type tnkey struct {
 	typ  reflect.Type
 	name string
 }
 
-func (k TypedKey) String() string {
+type object struct {
+	typ reflect.Type
+	ref interface{}
+}
+
+func (k tnkey) String() string {
 	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
 }
 
 type Containerd struct {
-	singletons map[TypedKey]interface{}        // 以Type为Key的实例列表
-	factory    map[TypedKey]func() interface{} // 以Type为Key的工厂函数
-	objects    []interface{}                   // 对象实例列表
+	singletons map[tnkey]interface{}        // 以Type为Key的实例列表
+	factory    map[tnkey]func() interface{} // 以Type为Key的工厂函数
+	objects    []object                     // 对象实例列表
 	hooks      []func(*Containerd, interface{})
 }
 
 func NewContainerd() *Containerd {
 	return &Containerd{
-		singletons: make(map[TypedKey]interface{}, 4),
-		factory:    make(map[TypedKey]func() interface{}, 4),
+		singletons: make(map[tnkey]interface{}, 16),
+		factory:    make(map[tnkey]func() interface{}, 16),
+		objects:    make([]object, 0, 16),
 	}
 }
 
@@ -47,7 +53,7 @@ func (c *Containerd) Register(in interface{}) {
 }
 
 func (c *Containerd) Add(obj interface{}) {
-	c.objects = append(c.objects, obj)
+	c.objects = append(c.objects, object{ref: obj, typ: reflect.TypeOf(obj)})
 }
 
 func (c *Containerd) Resolve(host interface{}) {
@@ -70,7 +76,7 @@ func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
 
 func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 	// singletons
-	key := makeTypedKey(typ)
+	key := mktnkey(typ)
 	if v, ok := c.singletons[key]; ok {
 		return v, true
 	}
@@ -96,32 +102,40 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 	if iface.Kind() != reflect.Interface {
 		panic(fmt.Errorf("arg 'iface' muse be Interface, was: %s", iface))
 	}
+	output := func(in interface{}) {
+		for _, v := range out {
+			if in == v {
+				return
+			}
+		}
+		out = append(out, in)
+	}
+	// objects
+	for _, obj := range c.objects {
+		if obj.typ.Implements(iface) {
+			output(obj.ref)
+		}
+	}
 	// singletons
 	for k, obj := range c.singletons {
 		if k.typ.Implements(iface) {
-			out = append(out, obj)
+			output(obj)
 		}
 	}
 	// factory
 	for k, fty := range c.factory {
 		if k.typ.Implements(iface) {
-			v := fty()
-			c.Resolve(v)
-			c.Add(v)
-			out = append(out, v)
-		}
-	}
-	// objects
-	for _, obj := range c.objects {
-		if reflect.TypeOf(obj).Implements(iface) {
-			out = append(out, obj)
+			newobj := fty()
+			c.Resolve(newobj)
+			c.Add(newobj)
+			out = append(out, newobj)
 		}
 	}
 	return out, true
 }
 
 func (c *Containerd) singletonOf(objtyp reflect.Type, obj interface{}) {
-	c.singletons[makeTypedKey(objtyp)] = obj
+	c.singletons[mktnkey(objtyp)] = obj
 }
 
 func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
@@ -129,7 +143,7 @@ func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
 		panic(fmt.Sprintf("invalid return values of factory func, num: %d", ftype.NumOut()))
 	}
 	funcv := reflect.ValueOf(factory)
-	c.factory[makeTypedKey(ftype.Out(0))] = func() interface{} {
+	c.factory[mktnkey(ftype.Out(0))] = func() interface{} {
 		return funcv.Call(nil)[0].Interface()
 	}
 }
@@ -170,6 +184,6 @@ func (c *Containerd) setter(meta reflect.Type, invoker reflect.Value) {
 	}
 }
 
-func makeTypedKey(typ reflect.Type) TypedKey {
-	return TypedKey{typ: typ, name: typ.Name()}
+func mktnkey(typ reflect.Type) tnkey {
+	return tnkey{typ: typ, name: typ.Name()}
 }
