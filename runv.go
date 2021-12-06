@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"reflect"
 	"syscall"
 	"time"
 )
@@ -49,40 +48,40 @@ func init() {
 }
 
 func Add(obj interface{}) {
-	AddState(obj)
+	AddActiveObject(obj)
 }
 
-func AddState(obj interface{}) {
-	AssertNNil(obj, "app: add a nil state object")
-	if dis, ok := obj.(Disabled); ok {
+func AddActiveObject(activeobj interface{}) {
+	AssertNNil(activeobj, "app: add a nil active-object")
+	if dis, ok := activeobj.(Disabled); ok {
 		if reason, is := dis.Disabled(); is {
-			logger.Infof("object is DISABLED, ignore. object: %T, reason: %s", obj, reason)
+			logger.Infof("active-object is DISABLED, object: %T, reason: %s", activeobj, reason)
 			return
 		}
 	}
-	if act, ok := obj.(Activable); ok && !act.Active() {
-		logger.Infof("object is NOT-ACTIVE, ignore. object: %T", obj)
+	if act, ok := activeobj.(Activable); ok && !act.Active() {
+		logger.Infof("active-object is NOT-ACTIVE, object: %T, reason: inactive", activeobj)
 		return
 	}
-	containerd.Register(obj)
-	AddObject(obj)
+	containerd.Register(activeobj)
+	AddStateObject(activeobj)
 }
 
-func AddObject(obj interface{}) {
-	AssertNNil(obj, "app: add a nil object")
-	if init, ok := obj.(Initable); ok {
+func AddStateObject(stateobj interface{}) {
+	AssertNNil(stateobj, "app: add a nil state-object")
+	if init, ok := stateobj.(Initable); ok {
 		app.initables = append(app.initables, init)
 	}
-	if up, ok := obj.(Startup); ok {
+	if up, ok := stateobj.(Startup); ok {
 		app.startups = append(app.startups, up)
 	}
-	if down, ok := obj.(Shutdown); ok {
+	if down, ok := stateobj.(Shutdown); ok {
 		app.shutdown = append(app.shutdown, down)
 	}
-	if serv, ok := obj.(Servable); ok {
+	if serv, ok := stateobj.(Servable); ok {
 		app.servables = append(app.servables, serv)
 	}
-	app.objects = append(app.objects, obj)
+	app.objects = append(app.objects, stateobj)
 }
 
 func RunV() {
@@ -94,7 +93,7 @@ func RunV() {
 	}
 	// resolve deps
 	for _, obj := range app.objects {
-		Resolve(obj)
+		containerd.Resolve(obj)
 	}
 	logger.Infof("app: init")
 	// init
@@ -143,26 +142,6 @@ func AddPreHook(hook func() error) {
 
 func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
-}
-
-func Provider(profun interface{}) {
-	containerd.Register(profun)
-}
-
-func Register(obj interface{}) {
-	containerd.Register(obj)
-}
-
-func Resolve(in interface{}) {
-	containerd.Resolve(in)
-}
-
-func LoadObject(typ reflect.Type) interface{} {
-	return containerd.LoadObject(typ)
-}
-
-func LoadTyped(iface reflect.Type) []interface{} {
-	return containerd.LoadTyped(iface)
 }
 
 func Container() *Containerd {
