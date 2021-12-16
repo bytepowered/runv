@@ -11,6 +11,15 @@ type Context interface {
 	Log() *logrus.Logger
 }
 
+type State uint
+
+const (
+	StateInit     State = 1
+	StateStartup  State = 2
+	StateServe    State = 4
+	StateShutdown State = 8
+)
+
 type Initable interface {
 	// OnInit 初始化组件
 	// 此方法执行时，如果返回非nil的error，整个服务启动过程将被终止。
@@ -41,6 +50,10 @@ type Shutdown interface {
 type Liveness interface {
 	Startup
 	Shutdown
+}
+
+type Liveorder interface {
+	Order(state State) int
 }
 
 type Activable interface {

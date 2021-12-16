@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 	"time"
 )
@@ -18,7 +19,7 @@ type application struct {
 	posthooks []func() error
 	initables []Initable
 	startups  []Startup
-	shutdown  []Shutdown
+	shutdowns []Shutdown
 	servables []Servable
 	objects   []interface{}
 }
@@ -27,7 +28,7 @@ var (
 	app = &application{
 		initables: make([]Initable, 0, 4),
 		startups:  make([]Startup, 0, 4),
-		shutdown:  make([]Shutdown, 0, 4),
+		shutdowns: make([]Shutdown, 0, 4),
 		servables: make([]Servable, 0, 4),
 		prehooks:  make([]func() error, 0, 4),
 		posthooks: make([]func() error, 0, 4),
@@ -76,7 +77,7 @@ func AddStateObject(stateobj interface{}) {
 		app.startups = append(app.startups, up)
 	}
 	if down, ok := stateobj.(Shutdown); ok {
-		app.shutdown = append(app.shutdown, down)
+		app.shutdowns = append(app.shutdowns, down)
 	}
 	if serv, ok := stateobj.(Servable); ok {
 		app.servables = append(app.servables, serv)
@@ -97,6 +98,7 @@ func RunV() {
 	}
 	logger.Infof("app: init")
 	// init
+	sort.Sort(initiables(app.initables))
 	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
 			logger.Fatalf("app: init error: %s", err)
@@ -161,9 +163,10 @@ func NewJSONLogger() *logrus.Logger {
 
 func shutdown(goctx context.Context) {
 	defer logger.Infof("app: terminaled")
-	for _, obj := range app.shutdown {
+	sort.Sort(shutdowns(app.shutdowns))
+	for _, obj := range app.shutdowns {
 		ctx := NewContextV(goctx, logger, nil)
-		err := metric2(ctx, fmt.Sprintf("component[%T] shutdown...", obj), obj.Shutdown)
+		err := metric2(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
 		if err != nil {
 			logger.Errorf("shutdown error: %s", err)
 		}
@@ -172,9 +175,10 @@ func shutdown(goctx context.Context) {
 
 func startup(goctx context.Context) error {
 	logger.Infof("app: startup")
+	sort.Sort(startups(app.startups))
 	for _, obj := range app.startups {
 		ctx := NewContextV(goctx, logger, nil)
-		err := metric2(ctx, fmt.Sprintf("component[%T] startup...", obj), obj.Startup)
+		err := metric2(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
 		if err != nil {
 			return fmt.Errorf("[%T] startup error: %s", obj, err)
 		}
@@ -184,12 +188,13 @@ func startup(goctx context.Context) error {
 
 func serve(goctx context.Context) error {
 	logger.Infof("app: serve")
+	sort.Sort(servables(app.servables))
 	for _, state := range app.servables {
 		ctx := state.Setup(goctx)
 		if statectx, ok := ctx.(*ContextV); ok && statectx.logger == nil {
 			statectx.logger = logger
 		}
-		err := metric1(ctx, fmt.Sprintf("component[%T] start serve...", state), state.Serve)
+		err := metric1(ctx, fmt.Sprintf("[%T] serve...", state), state.Serve)
 		if err != nil {
 			return fmt.Errorf("[%T] serve error: %w", state, err)
 		}
@@ -199,7 +204,7 @@ func serve(goctx context.Context) error {
 
 func metric1(ctx Context, name string, step func(ctx Context) error) error {
 	defer func(t time.Time) {
-		ctx.Log().Infof("%s takes: %s", name, time.Since(t))
+		ctx.Log().Infof("%s elspaed: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
 }
