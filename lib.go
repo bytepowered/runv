@@ -2,13 +2,11 @@ package runv
 
 import (
 	"context"
-	"github.com/sirupsen/logrus"
 )
 
 type Context interface {
 	context.Context
 	ValueE(key interface{}) (value interface{}, ok bool)
-	Log() *logrus.Logger
 }
 
 type State uint

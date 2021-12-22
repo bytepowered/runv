@@ -2,31 +2,29 @@ package runv
 
 import (
 	"context"
-	"github.com/sirupsen/logrus"
 	"time"
 )
 
 var _ Context = new(ContextV)
 
 type ContextV struct {
-	ctx    context.Context
-	vars   map[interface{}]interface{}
-	logger *logrus.Logger
+	ctx  context.Context
+	vars map[interface{}]interface{}
 }
 
-func NewContextV(ctx context.Context, logger *logrus.Logger, vars map[interface{}]interface{}) *ContextV {
+func NewContextV(ctx context.Context, vars map[interface{}]interface{}) *ContextV {
 	if vars == nil {
 		vars = make(map[interface{}]interface{}, 0)
 	}
-	return &ContextV{ctx: ctx, logger: logger, vars: vars}
+	return &ContextV{ctx: ctx, vars: vars}
 }
 
 func NewContextVX(ctx context.Context, vars map[interface{}]interface{}) *ContextV {
-	return NewContextV(ctx, nil, vars)
+	return NewContextV(ctx, vars)
 }
 
 func NewContextV0(ctx context.Context) *ContextV {
-	return NewContextV(ctx, nil, nil)
+	return NewContextV(ctx, nil)
 }
 
 func (s *ContextV) Deadline() (deadline time.Time, ok bool) {
@@ -53,8 +51,4 @@ func (s *ContextV) ValueE(key interface{}) (value interface{}, ok bool) {
 	}
 	value = s.ctx.Value(key)
 	return value, nil == value
-}
-
-func (s *ContextV) Log() *logrus.Logger {
-	return s.logger
 }

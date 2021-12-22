@@ -28,7 +28,7 @@ func (c *CompA) Setup(ctx context.Context) runv.Context {
 }
 
 func (c *CompA) Serve(ctx runv.Context) error {
-	ctx.Log().Infof("serve: A")
+	runv.Log().Infof("serve: A")
 	return nil
 }
 
