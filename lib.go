@@ -25,12 +25,9 @@ type Initable interface {
 }
 
 type Servable interface {
-	// Setup 创建并返回Context；后续Serve方法调用时，将使用此Context作为参数。
-	Setup(ctx context.Context) Context
-
 	// Serve 基于Context执行服务；
 	// 此方法执行时，如果返回非nil的error，整个服务启动过程将被终止。
-	Serve(Context) error
+	Serve(ctx context.Context) error
 }
 
 type Startup interface {

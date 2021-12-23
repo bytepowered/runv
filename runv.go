@@ -16,6 +16,7 @@ import (
 
 type Options struct {
 	StartupTimeout  time.Duration
+	ServeTimeout    time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -93,6 +94,7 @@ func AddStateObject(stateobj interface{}) {
 func RunV() {
 	DoRunV(Options{
 		StartupTimeout:  time.Second * 10,
+		ServeTimeout:    time.Second * 10,
 		ShutdownTimeout: time.Second * 10,
 	})
 }
@@ -101,7 +103,7 @@ func DoRunV(opts Options) {
 	// prepare hooks
 	for _, prehook := range app.prehooks {
 		if err := prehook(); err != nil {
-			xlog().Fatalf("app: pre-hook error: %s", err)
+			xlog().Fatalf("pre-hook failed, err: %s", err)
 		}
 	}
 	// resolve deps
@@ -113,7 +115,7 @@ func DoRunV(opts Options) {
 	sort.Sort(initiables(app.initables))
 	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
-			xlog().Fatalf("init error: %s", err)
+			xlog().Fatalf("init failed, err: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
@@ -122,19 +124,19 @@ func DoRunV(opts Options) {
 	defer shutdown(goctx, opts.ShutdownTimeout)
 	// startup
 	if err := startup(goctx, opts.StartupTimeout); err != nil {
-		xlog().Fatalf("startup, error: %s", err)
+		xlog().Fatalf("startup failed, err: %s", err)
 	}
-	// serve with setup
-	if err := serve(goctx); err != nil {
-		xlog().Fatalf("serve, error: %s", err)
+	// serve
+	if err := serve(goctx, opts.ServeTimeout); err != nil {
+		xlog().Fatalf("serve failed, err: %s", err)
 	}
 	// post hook
 	for _, posthook := range app.posthooks {
 		if err := posthook(); err != nil {
-			xlog().Fatalf("post-hook error: %s", err)
+			xlog().Fatalf("post-hook failed, err: %s", err)
 		}
 	}
-	xlog().Infof("run-v SUCCESS!")
+	xlog().Infof("RunV OK!")
 	<-signalf()
 }
 
@@ -180,7 +182,7 @@ func shutdown(goctx context.Context, timeout time.Duration) {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
 		ctx := NewContextV(newctx, nil)
-		return metricStd(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
+		return metric(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
 	}
 	for _, obj := range app.shutdowns {
 		if err := doshutdown(obj); err != nil {
@@ -196,7 +198,7 @@ func startup(goctx context.Context, timeout time.Duration) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
 		ctx := NewContextV(newctx, nil)
-		return metricStd(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
+		return metric(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
 	}
 	for _, obj := range app.startups {
 		if err := startup0(obj); err != nil {
@@ -206,14 +208,18 @@ func startup(goctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-func serve(goctx context.Context) error {
+func serve(goctx context.Context, timeout time.Duration) error {
 	xlog().Infof("serve")
 	sort.Sort(servables(app.servables))
-	for _, state := range app.servables {
-		ctx := state.Setup(goctx)
-		err := metricExt(ctx, fmt.Sprintf("[%T] serve...", state), state.Serve)
-		if err != nil {
-			return fmt.Errorf("[%T] serve error: %w", state, err)
+	doserve := func(obj Servable) error {
+		newctx, cancel := context.WithTimeout(goctx, timeout)
+		defer cancel()
+		ctx := NewContextV(newctx, nil)
+		return metric(ctx, fmt.Sprintf("[%T] serve...", obj), obj.Serve)
+	}
+	for _, serv := range app.servables {
+		if err := doserve(serv); err != nil {
+			return fmt.Errorf("[%T] serve error: %w", serv, err)
 		}
 	}
 	return nil
@@ -223,15 +229,9 @@ func xlog() *logrus.Entry {
 	return logger.WithField("app", "runv.app")
 }
 
-func metricExt(ctx Context, name string, step func(ctx Context) error) error {
+func metric(ctx Context, name string, step func(ctx context.Context) error) error {
 	defer func(t time.Time) {
 		Log().Infof("%s elspaed: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
-}
-
-func metricStd(ctx Context, name string, step func(ctx context.Context) error) error {
-	return metricExt(ctx, name, func(ctx Context) error {
-		return step(ctx)
-	})
 }

@@ -23,11 +23,7 @@ func (c *CompA) Startup(ctx context.Context) error {
 	return nil
 }
 
-func (c *CompA) Setup(ctx context.Context) runv.Context {
-	return runv.NewContextV0(ctx)
-}
-
-func (c *CompA) Serve(ctx runv.Context) error {
+func (c *CompA) Serve(ctx context.Context) error {
 	runv.Log().Infof("serve: A")
 	return nil
 }
