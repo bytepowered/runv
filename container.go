@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type tnkey struct {
+type objtype struct {
 	typ  reflect.Type
 	name string
 }
@@ -16,21 +16,21 @@ type object struct {
 	ref interface{}
 }
 
-func (k tnkey) String() string {
-	return fmt.Sprintf("type: %s, name: %s", k.typ, k.name)
+func (ot objtype) String() string {
+	return fmt.Sprintf("type: %s, name: %s", ot.typ, ot.name)
 }
 
 type Containerd struct {
-	singletons map[tnkey]interface{}        // 以Type为Key的实例列表
-	factory    map[tnkey]func() interface{} // 以Type为Key的工厂函数
-	objects    []object                     // 对象实例列表
+	singletons map[objtype]interface{}        // 以Type为Key的实例列表
+	factory    map[objtype]func() interface{} // 以Type为Key的工厂函数
+	objects    []object                       // 对象实例列表
 	hooks      []func(*Containerd, interface{})
 }
 
 func NewContainerd() *Containerd {
 	return &Containerd{
-		singletons: make(map[tnkey]interface{}, 16),
-		factory:    make(map[tnkey]func() interface{}, 16),
+		singletons: make(map[objtype]interface{}, 16),
+		factory:    make(map[objtype]func() interface{}, 16),
 		objects:    make([]object, 0, 16),
 	}
 }
@@ -56,9 +56,9 @@ func (c *Containerd) Add(obj interface{}) {
 	c.objects = append(c.objects, object{ref: obj, typ: reflect.TypeOf(obj)})
 }
 
-func (c *Containerd) Resolve(host interface{}) {
-	meta := reflect.TypeOf(host)
-	invoker := reflect.ValueOf(host)
+func (c *Containerd) Resolve(object interface{}) {
+	meta := reflect.TypeOf(object)
+	invoker := reflect.ValueOf(object)
 	switch meta.Kind() {
 	case reflect.Ptr, reflect.Interface, reflect.Struct:
 		c.setter(meta, invoker)
@@ -76,7 +76,7 @@ func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
 
 func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 	// singletons
-	key := mktnkey(typ)
+	key := mkobjkey(typ)
 	if v, ok := c.singletons[key]; ok {
 		return v, true
 	}
@@ -135,7 +135,7 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 }
 
 func (c *Containerd) singletonOf(objtyp reflect.Type, obj interface{}) {
-	c.singletons[mktnkey(objtyp)] = obj
+	c.singletons[mkobjkey(objtyp)] = obj
 }
 
 func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
@@ -143,7 +143,7 @@ func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
 		panic(fmt.Sprintf("invalid return values of factory func, num: %d", ftype.NumOut()))
 	}
 	funcv := reflect.ValueOf(factory)
-	c.factory[mktnkey(ftype.Out(0))] = func() interface{} {
+	c.factory[mkobjkey(ftype.Out(0))] = func() interface{} {
 		return funcv.Call(nil)[0].Interface()
 	}
 }
@@ -184,6 +184,6 @@ func (c *Containerd) setter(meta reflect.Type, invoker reflect.Value) {
 	}
 }
 
-func mktnkey(typ reflect.Type) tnkey {
-	return tnkey{typ: typ, name: typ.Name()}
+func mkobjkey(typ reflect.Type) objtype {
+	return objtype{typ: typ, name: typ.Name()}
 }

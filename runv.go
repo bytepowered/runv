@@ -3,6 +3,7 @@ package runv
 import (
 	"context"
 	"fmt"
+	"github.com/bytepowered/runv/assert"
 	"os"
 	"os/signal"
 	"sort"
@@ -59,7 +60,7 @@ func Add(obj interface{}) {
 }
 
 func AddActiveObject(activeobj interface{}) {
-	AssertNNil(activeobj, "add a nil active-object")
+	assert.MustNotNil(activeobj, "add a nil active-object")
 	if dis, ok := activeobj.(Disabled); ok {
 		if reason, is := dis.Disabled(); is {
 			xlog().Infof("active-object is DISABLED, object: %T, reason: %s", activeobj, reason)
@@ -75,7 +76,7 @@ func AddActiveObject(activeobj interface{}) {
 }
 
 func AddStateObject(stateobj interface{}) {
-	AssertNNil(stateobj, "add a nil state-object")
+	assert.MustNotNil(stateobj, "add a nil state-object")
 	if init, ok := stateobj.(Initable); ok {
 		app.initables = append(app.initables, init)
 	}
@@ -181,7 +182,7 @@ func shutdown(goctx context.Context, timeout time.Duration) {
 	doshutdown := func(obj Shutdown) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
-		ctx := NewContextV(newctx, nil)
+		ctx := NewVarContext(newctx, nil)
 		return metric(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
 	}
 	for _, obj := range app.shutdowns {
@@ -197,7 +198,7 @@ func startup(goctx context.Context, timeout time.Duration) error {
 	startup0 := func(obj Startup) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
-		ctx := NewContextV(newctx, nil)
+		ctx := NewVarContext(newctx, nil)
 		return metric(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
 	}
 	for _, obj := range app.startups {
@@ -214,7 +215,7 @@ func serve(goctx context.Context, timeout time.Duration) error {
 	doserve := func(obj Servable) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
-		ctx := NewContextV(newctx, nil)
+		ctx := NewVarContext(newctx, nil)
 		return metric(ctx, fmt.Sprintf("[%T] serve...", obj), obj.Serve)
 	}
 	for _, serv := range app.servables {

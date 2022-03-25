@@ -1,4 +1,4 @@
-package runv
+package assert
 
 import (
 	"fmt"
@@ -18,15 +18,15 @@ var (
 	}()
 )
 
-func Assert(shouldTrue bool, message string, args ...interface{}) {
-	if assertable && !shouldTrue {
+func Must(isTrue bool, message string, args ...interface{}) {
+	if assertable && !isTrue {
 		panic(fmt.Errorf(prefix+"%s", fmt.Sprintf(message, args...)))
 	}
 }
 
-// AssertNil 对输入值进行断言，期望为Nil(包含nil和值nil情况)；
+// MustNil 对输入值进行断言，期望为Nil(包含nil和值nil情况)；
 // 如果输入值为非Nil，断言将触发panic，抛出错误消息（消息模板）。
-func AssertNil(v interface{}, message string, args ...interface{}) {
+func MustNil(v interface{}, message string, args ...interface{}) {
 	if assertable && !IsNil(v) {
 		var perr error
 		if err, ok := v.(error); ok {
@@ -38,9 +38,9 @@ func AssertNil(v interface{}, message string, args ...interface{}) {
 	}
 }
 
-// AssertNNil 对输入值进行断言，期望为非Nil；
+// MustNotNil 对输入值进行断言，期望为非Nil；
 // 如果输入值为Nil值（包括nil和值为Nil情况），断言将触发panic，抛出错误消息（消息模板）。
-func AssertNNil(v interface{}, message string, args ...interface{}) {
+func MustNotNil(v interface{}, message string, args ...interface{}) {
 	if assertable && IsNil(v) {
 		panic(fmt.Errorf(prefix+"%s", fmt.Sprintf(message, args...)))
 	}
