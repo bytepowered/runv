@@ -4,12 +4,12 @@ import (
 	"os"
 )
 
-type ActiveExprs map[string]interface{}
+type EnvActiveExprs map[string]interface{}
 
-func (ex ActiveExprs) IsActive() bool {
+func (e EnvActiveExprs) IsActive() bool {
 	// { DEPLOY_ENV = ["DEV", "UAT", "PROD"] }
 	// { DEPLOY_ENV = ["DEV", "UAT", "PROD"] }
-	for key, expr := range ex {
+	for key, expr := range e {
 		env, ok := os.LookupEnv(key)
 		if !ok {
 			return false
@@ -20,7 +20,7 @@ func (ex ActiveExprs) IsActive() bool {
 				return false
 			}
 		case []string:
-			if !ex.matches(env, expr.([]string)) {
+			if !e.matches(env, expr.([]string)) {
 				return false
 			}
 		}
@@ -28,7 +28,7 @@ func (ex ActiveExprs) IsActive() bool {
 	return true
 }
 
-func (ex ActiveExprs) matches(in string, exprs []string) bool {
+func (e EnvActiveExprs) matches(in string, exprs []string) bool {
 	for _, v := range exprs {
 		if in == v {
 			return true

@@ -21,7 +21,7 @@ type Options struct {
 	ShutdownTimeout time.Duration
 }
 
-type application struct {
+type Application struct {
 	prehooks  []func() error
 	posthooks []func() error
 	initables []Initable
@@ -32,7 +32,7 @@ type application struct {
 }
 
 var (
-	app = &application{
+	app = &Application{
 		initables: make([]Initable, 0, 4),
 		startups:  make([]Startup, 0, 4),
 		shutdowns: make([]Shutdown, 0, 4),

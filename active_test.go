@@ -7,7 +7,7 @@ import (
 )
 
 func TestActiveExprsMulti(t *testing.T) {
-	exprs := ActiveExprs{
+	exprs := EnvActiveExprs{
 		"DEPLOY": []string{"UAT", "PROD"},
 	}
 	_ = os.Setenv("DEPLOY", "DEV")
@@ -20,11 +20,10 @@ func TestActiveExprsMulti(t *testing.T) {
 	assert.True(t, exprs.IsActive())
 }
 
-
 func TestActiveExprsSingle(t *testing.T) {
-	exprs := ActiveExprs{
+	exprs := EnvActiveExprs{
 		"DEPLOY": "PROD",
-		"APP": "RUNV",
+		"APP":    "RUNV",
 	}
 	_ = os.Setenv("DEPLOY", "DEV")
 	assert.False(t, exprs.IsActive())
