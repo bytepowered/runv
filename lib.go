@@ -26,7 +26,8 @@ type Initable interface {
 
 type Servable interface {
 	// Serve 基于Context执行服务；
-	// 此方法执行时，如果返回非nil的error，整个服务启动过程将被终止。
+	// 此方法执行时，如果返回非nil的error，整个服务运行过程将被终止。
+	// Serve函数运行时应当处于阻塞状态。如果函数执行并返回，表示服务的停止。
 	Serve(ctx context.Context) error
 }
 

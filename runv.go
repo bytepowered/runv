@@ -111,7 +111,7 @@ func DoRunV(opts Options) {
 	for _, obj := range app.objects {
 		containerd.Resolve(obj)
 	}
-	xlog().Infof("init")
+	xlog().Debug("init")
 	// init
 	sort.Sort(initiables(app.initables))
 	for _, obj := range app.initables {
@@ -137,7 +137,7 @@ func DoRunV(opts Options) {
 			xlog().Fatalf("post-hook failed, err: %s", err)
 		}
 	}
-	xlog().Infof("RunV OK!")
+	xlog().Debug("run, wait signals")
 	<-signalf()
 }
 
@@ -177,7 +177,7 @@ func NewJSONLogger() *logrus.Logger {
 }
 
 func shutdown(goctx context.Context, timeout time.Duration) {
-	defer xlog().Infof("terminaled")
+	defer xlog().Debug("shutdown")
 	sort.Sort(shutdowns(app.shutdowns))
 	doshutdown := func(obj Shutdown) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
@@ -193,7 +193,7 @@ func shutdown(goctx context.Context, timeout time.Duration) {
 }
 
 func startup(goctx context.Context, timeout time.Duration) error {
-	xlog().Infof("startup")
+	xlog().Debug("startup")
 	sort.Sort(startups(app.startups))
 	startup0 := func(obj Startup) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
@@ -210,13 +210,13 @@ func startup(goctx context.Context, timeout time.Duration) error {
 }
 
 func serve(goctx context.Context, timeout time.Duration) error {
-	xlog().Infof("serve")
+	xlog().Debug("serve")
 	sort.Sort(servables(app.servables))
 	doserve := func(obj Servable) error {
 		newctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
 		ctx := NewVarContext(newctx, nil)
-		return metric(ctx, fmt.Sprintf("[%T] serve...", obj), obj.Serve)
+		return obj.Serve(ctx)
 	}
 	for _, serv := range app.servables {
 		if err := doserve(serv); err != nil {
@@ -232,7 +232,7 @@ func xlog() *logrus.Entry {
 
 func metric(ctx Context, name string, step func(ctx context.Context) error) error {
 	defer func(t time.Time) {
-		Log().Infof("%s elspaed: %s", name, time.Since(t))
+		Log().Debug("%s elapsed: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
 }
