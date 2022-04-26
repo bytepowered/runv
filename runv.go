@@ -232,7 +232,7 @@ func xlog() *logrus.Entry {
 
 func metric(ctx Context, name string, step func(ctx context.Context) error) error {
 	defer func(t time.Time) {
-		Log().Debug("%s elapsed: %s", name, time.Since(t))
+		Log().Debugf("%s elapsed: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
 }
