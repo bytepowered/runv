@@ -3,7 +3,6 @@ package runv
 import (
 	"context"
 	"fmt"
-	"github.com/bytepowered/runv/assert"
 	"os"
 	"os/signal"
 	"sort"
@@ -12,6 +11,7 @@ import (
 )
 
 import (
+	"github.com/bytepowered/runv/assert"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +27,7 @@ type Application struct {
 	initables []Initable
 	startups  []Startup
 	shutdowns []Shutdown
-	servables []Servable
+	servable  Servable
 	objects   []interface{}
 }
 
@@ -36,7 +36,6 @@ var (
 		initables: make([]Initable, 0, 4),
 		startups:  make([]Startup, 0, 4),
 		shutdowns: make([]Shutdown, 0, 4),
-		servables: make([]Servable, 0, 4),
 		prehooks:  make([]func() error, 0, 4),
 		posthooks: make([]func() error, 0, 4),
 	}
@@ -63,33 +62,34 @@ func AddActiveObject(activeobj interface{}) {
 	assert.MustNotNil(activeobj, "add a nil active-object")
 	if dis, ok := activeobj.(Disabled); ok {
 		if reason, is := dis.Disabled(); is {
-			xlog().Infof("active-object is DISABLED, object: %T, reason: %s", activeobj, reason)
+			Log().Infof("active-object is DISABLED, object: %T, reason: %s", activeobj, reason)
 			return
 		}
 	}
 	if act, ok := activeobj.(Activable); ok && !act.Active() {
-		xlog().Infof("active-object is NOT-ACTIVE, object: %T, reason: inactive", activeobj)
+		Log().Infof("active-object is NOT-ACTIVE, object: %T, reason: inactive", activeobj)
 		return
 	}
 	containerd.Register(activeobj)
 	AddStateObject(activeobj)
 }
 
-func AddStateObject(stateobj interface{}) {
-	assert.MustNotNil(stateobj, "add a nil state-object")
-	if init, ok := stateobj.(Initable); ok {
+func AddStateObject(object interface{}) {
+	assert.MustNotNil(object, "add a nil state-object")
+	if init, ok := object.(Initable); ok {
 		app.initables = append(app.initables, init)
 	}
-	if up, ok := stateobj.(Startup); ok {
+	if up, ok := object.(Startup); ok {
 		app.startups = append(app.startups, up)
 	}
-	if down, ok := stateobj.(Shutdown); ok {
+	if down, ok := object.(Shutdown); ok {
 		app.shutdowns = append(app.shutdowns, down)
 	}
-	if serv, ok := stateobj.(Servable); ok {
-		app.servables = append(app.servables, serv)
+	if serv, ok := object.(Servable); ok {
+		assert.MustNotNil(app.servable, fmt.Sprintf("duplicated servable object, was: %T", object))
+		app.servable = serv
 	}
-	app.objects = append(app.objects, stateobj)
+	app.objects = append(app.objects, object)
 }
 
 func RunV() {
@@ -104,19 +104,18 @@ func DoRunV(opts Options) {
 	// prepare hooks
 	for _, prehook := range app.prehooks {
 		if err := prehook(); err != nil {
-			xlog().Fatalf("pre-hook failed, err: %s", err)
+			Log().Fatalf("pre-hook failed, err: %s", err)
 		}
 	}
 	// resolve deps
 	for _, obj := range app.objects {
 		containerd.Resolve(obj)
 	}
-	xlog().Debug("init")
 	// init
 	sort.Sort(initiables(app.initables))
 	for _, obj := range app.initables {
 		if err := obj.OnInit(); err != nil {
-			xlog().Fatalf("init failed, err: %s", err)
+			Log().Fatalf("init failed, err: %s", err)
 		}
 	}
 	goctx, ctxfun := context.WithCancel(context.Background())
@@ -125,19 +124,20 @@ func DoRunV(opts Options) {
 	defer shutdown(goctx, opts.ShutdownTimeout)
 	// startup
 	if err := startup(goctx, opts.StartupTimeout); err != nil {
-		xlog().Fatalf("startup failed, err: %s", err)
+		Log().Fatalf("startup failed, err: %s", err)
 	}
 	// serve
-	if err := serve(goctx, opts.ServeTimeout); err != nil {
-		xlog().Fatalf("serve failed, err: %s", err)
+	if app.servable != nil {
+		if err := app.servable.Serve(goctx); err != nil {
+			Log().Fatalf("serve failed, err: %s", err)
+		}
 	}
 	// post hook
 	for _, posthook := range app.posthooks {
 		if err := posthook(); err != nil {
-			xlog().Fatalf("post-hook failed, err: %s", err)
+			Log().Fatalf("post-hook failed, err: %s", err)
 		}
 	}
-	xlog().Debug("run, wait signals")
 	<-signalf()
 }
 
@@ -177,28 +177,24 @@ func NewJSONLogger() *logrus.Logger {
 }
 
 func shutdown(goctx context.Context, timeout time.Duration) {
-	defer xlog().Debug("shutdown")
 	sort.Sort(shutdowns(app.shutdowns))
 	doshutdown := func(obj Shutdown) error {
-		newctx, cancel := context.WithTimeout(goctx, timeout)
+		ctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
-		ctx := NewVarContext(newctx, nil)
 		return metric(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
 	}
 	for _, obj := range app.shutdowns {
 		if err := doshutdown(obj); err != nil {
-			xlog().Errorf("shutdown error: %s", err)
+			Log().Errorf("shutdown error: %s", err)
 		}
 	}
 }
 
 func startup(goctx context.Context, timeout time.Duration) error {
-	xlog().Debug("startup")
 	sort.Sort(startups(app.startups))
 	startup0 := func(obj Startup) error {
-		newctx, cancel := context.WithTimeout(goctx, timeout)
+		ctx, cancel := context.WithTimeout(goctx, timeout)
 		defer cancel()
-		ctx := NewVarContext(newctx, nil)
 		return metric(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
 	}
 	for _, obj := range app.startups {
@@ -209,30 +205,9 @@ func startup(goctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-func serve(goctx context.Context, timeout time.Duration) error {
-	xlog().Debug("serve")
-	sort.Sort(servables(app.servables))
-	doserve := func(obj Servable) error {
-		newctx, cancel := context.WithTimeout(goctx, timeout)
-		defer cancel()
-		ctx := NewVarContext(newctx, nil)
-		return obj.Serve(ctx)
-	}
-	for _, serv := range app.servables {
-		if err := doserve(serv); err != nil {
-			return fmt.Errorf("[%T] serve error: %w", serv, err)
-		}
-	}
-	return nil
-}
-
-func xlog() *logrus.Entry {
-	return logger.WithField("app", "runv.app")
-}
-
-func metric(ctx Context, name string, step func(ctx context.Context) error) error {
+func metric(ctx context.Context, name string, step func(ctx context.Context) error) error {
 	defer func(t time.Time) {
-		Log().Debugf("%s elapsed: %s", name, time.Since(t))
+		Log().Debugf("%s elspaed: %s", name, time.Since(t))
 	}(time.Now())
 	return step(ctx)
 }

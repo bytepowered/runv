@@ -4,18 +4,12 @@ import (
 	"context"
 )
 
-type Context interface {
-	context.Context
-	ValueE(key interface{}) (value interface{}, ok bool)
-}
-
 type State uint
 
 const (
 	StateInit     State = 1
 	StateStartup  State = 2
-	StateServe    State = 4
-	StateShutdown State = 8
+	StateShutdown State = 4
 )
 
 type Initable interface {

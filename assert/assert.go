@@ -24,6 +24,10 @@ func Must(isTrue bool, message string, args ...interface{}) {
 	}
 }
 
+func MustEmpty(str string, message string, args ...interface{}) {
+	Must("" == str, message, args...)
+}
+
 // MustNil 对输入值进行断言，期望为Nil(包含nil和值nil情况)；
 // 如果输入值为非Nil，断言将触发panic，抛出错误消息（消息模板）。
 func MustNil(v interface{}, message string, args ...interface{}) {

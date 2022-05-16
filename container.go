@@ -6,32 +6,32 @@ import (
 	"strings"
 )
 
-type objtype struct {
+type BeanType struct {
 	typ  reflect.Type
 	name string
 }
 
-type object struct {
-	typ reflect.Type
-	ref interface{}
+type Bean struct {
+	typ  reflect.Type
+	bean interface{}
 }
 
-func (ot objtype) String() string {
-	return fmt.Sprintf("type: %s, name: %s", ot.typ, ot.name)
+func (t BeanType) String() string {
+	return fmt.Sprintf("type: %s, name: %s", t.typ, t.name)
 }
 
 type Containerd struct {
-	singletons map[objtype]interface{}        // 以Type为Key的实例列表
-	factory    map[objtype]func() interface{} // 以Type为Key的工厂函数
-	objects    []object                       // 对象实例列表
+	singletons map[BeanType]interface{}        // 以Type为Key的实例列表
+	factories  map[BeanType]func() interface{} // 以Type为Key的工厂函数
+	beans      []Bean                          // 对象实例列表
 	hooks      []func(*Containerd, interface{})
 }
 
 func NewContainerd() *Containerd {
 	return &Containerd{
-		singletons: make(map[objtype]interface{}, 16),
-		factory:    make(map[objtype]func() interface{}, 16),
-		objects:    make([]object, 0, 16),
+		singletons: make(map[BeanType]interface{}, 16),
+		factories:  make(map[BeanType]func() interface{}, 16),
+		beans:      make([]Bean, 0, 16),
 	}
 }
 
@@ -42,18 +42,14 @@ func (c *Containerd) AddHook(hook func(*Containerd, interface{})) {
 func (c *Containerd) Register(in interface{}) {
 	intyp := reflect.TypeOf(in)
 	if intyp.Kind() == reflect.Func {
-		c.factoryOf(intyp, in)
+		c.factory(intyp, in)
 	} else {
-		c.singletonOf(intyp, in)
+		c.singleton(intyp, in)
 		for _, hook := range c.hooks {
 			hook(c, in)
 		}
 		c.Add(in)
 	}
-}
-
-func (c *Containerd) Add(obj interface{}) {
-	c.objects = append(c.objects, object{ref: obj, typ: reflect.TypeOf(obj)})
 }
 
 func (c *Containerd) Resolve(object interface{}) {
@@ -67,8 +63,7 @@ func (c *Containerd) Resolve(object interface{}) {
 }
 
 func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
-	v, ok := c.LoadObjectE(typ)
-	if ok {
+	if v, ok := c.LoadObjectE(typ); ok {
 		return v
 	}
 	return nil
@@ -76,12 +71,12 @@ func (c *Containerd) LoadObject(typ reflect.Type) interface{} {
 
 func (c *Containerd) LoadObjectE(typ reflect.Type) (interface{}, bool) {
 	// singletons
-	key := mkobjkey(typ)
+	key := BeanType{typ: typ, name: typ.Name()}
 	if v, ok := c.singletons[key]; ok {
 		return v, true
 	}
 	// by factory
-	if fty, ok := c.factory[key]; ok {
+	if fty, ok := c.factories[key]; ok {
 		v := fty()
 		c.Resolve(v)
 		c.Add(v)
@@ -111,9 +106,9 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 		out = append(out, in)
 	}
 	// objects
-	for _, obj := range c.objects {
+	for _, obj := range c.beans {
 		if obj.typ.Implements(iface) {
-			output(obj.ref)
+			output(obj.bean)
 		}
 	}
 	// singletons
@@ -123,7 +118,7 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 		}
 	}
 	// factory
-	for k, fty := range c.factory {
+	for k, fty := range c.factories {
 		if k.typ.Implements(iface) {
 			newobj := fty()
 			c.Resolve(newobj)
@@ -134,16 +129,21 @@ func (c *Containerd) LoadTypedE(iface reflect.Type) (out []interface{}, ok bool)
 	return out, true
 }
 
-func (c *Containerd) singletonOf(objtyp reflect.Type, obj interface{}) {
-	c.singletons[mkobjkey(objtyp)] = obj
+func (c *Containerd) Add(obj interface{}) {
+	c.beans = append(c.beans, Bean{bean: obj, typ: reflect.TypeOf(obj)})
 }
 
-func (c *Containerd) factoryOf(ftype reflect.Type, factory interface{}) {
+func (c *Containerd) singleton(typ reflect.Type, obj interface{}) {
+	c.singletons[BeanType{typ: typ, name: typ.Name()}] = obj
+}
+
+func (c *Containerd) factory(ftype reflect.Type, factory interface{}) {
 	if ftype.NumOut() != 1 {
 		panic(fmt.Sprintf("invalid return values of factory func, num: %d", ftype.NumOut()))
 	}
 	funcv := reflect.ValueOf(factory)
-	c.factory[mkobjkey(ftype.Out(0))] = func() interface{} {
+	typ := ftype.Out(0)
+	c.factories[BeanType{typ: typ, name: typ.Name()}] = func() interface{} {
 		return funcv.Call(nil)[0].Interface()
 	}
 }
@@ -182,8 +182,4 @@ func (c *Containerd) setter(meta reflect.Type, invoker reflect.Value) {
 			invoker.Method(i).Call([]reflect.Value{args})
 		}
 	}
-}
-
-func mkobjkey(typ reflect.Type) objtype {
-	return objtype{typ: typ, name: typ.Name()}
 }
