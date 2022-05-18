@@ -86,7 +86,7 @@ func AddStateObject(object interface{}) {
 		app.shutdowns = append(app.shutdowns, down)
 	}
 	if serv, ok := object.(Servable); ok {
-		assert.MustNotNil(app.servable, fmt.Sprintf("duplicated servable object, was: %T", object))
+		assert.MustNil(app.servable, fmt.Sprintf("duplicated servable object, exists: %T, tobe: %T", app.servable, serv))
 		app.servable = serv
 	}
 	app.objects = append(app.objects, object)
