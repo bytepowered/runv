@@ -44,15 +44,8 @@ var (
 		signal.Notify(sig, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 		return sig
 	}
-	containerd = NewContainerd()
-	logger     = NewJSONLogger()
+	logger = NewJSONLogger()
 )
-
-func init() {
-	containerd.AddHook(func(container *Containerd, _ interface{}) {
-		container.Resolve(app)
-	})
-}
 
 func Add(obj interface{}) {
 	AddActiveObject(obj)
@@ -70,7 +63,6 @@ func AddActiveObject(activeobj interface{}) {
 		Log().Infof("active-object is NOT-ACTIVE, object: %T, reason: inactive", activeobj)
 		return
 	}
-	containerd.Register(activeobj)
 	AddStateObject(activeobj)
 }
 
@@ -102,39 +94,35 @@ func RunV() {
 
 func DoRunV(opts Options) {
 	// prepare hooks
-	for _, prehook := range app.prehooks {
-		if err := prehook(); err != nil {
+	for _, hook := range app.prehooks {
+		if err := hook(); err != nil {
 			Log().Fatalf("pre-hook failed, err: %s", err)
 		}
 	}
-	// resolve deps
-	for _, obj := range app.objects {
-		containerd.Resolve(obj)
-	}
 	// init
 	sort.Sort(initiables(app.initables))
-	for _, obj := range app.initables {
-		if err := obj.OnInit(); err != nil {
+	for _, init := range app.initables {
+		if err := init.OnInit(); err != nil {
 			Log().Fatalf("init failed, err: %s", err)
 		}
 	}
-	goctx, ctxfun := context.WithCancel(context.Background())
-	defer ctxfun()
-	// finally shutdown
-	defer shutdown(goctx, opts.ShutdownTimeout)
+	stateCtx, stateCanceled := context.WithCancel(context.Background())
+	defer stateCanceled()
 	// startup
-	if err := startup(goctx, opts.StartupTimeout); err != nil {
+	if err := startup(stateCtx); err != nil {
 		Log().Fatalf("startup failed, err: %s", err)
 	}
+	// shutdown if startup
+	defer shutdown(stateCtx)
 	// serve
 	if app.servable != nil {
-		if err := app.servable.Serve(goctx); err != nil {
+		if err := app.servable.Serve(stateCtx); err != nil {
 			Log().Fatalf("serve failed, err: %s", err)
 		}
 	}
 	// post hook
-	for _, posthook := range app.posthooks {
-		if err := posthook(); err != nil {
+	for _, hook := range app.posthooks {
+		if err := hook(); err != nil {
 			Log().Fatalf("post-hook failed, err: %s", err)
 		}
 	}
@@ -161,10 +149,6 @@ func AddPostHook(hook func() error) {
 	app.posthooks = append(app.posthooks, hook)
 }
 
-func Container() *Containerd {
-	return containerd
-}
-
 func NewJSONLogger() *logrus.Logger {
 	return &logrus.Logger{
 		Out:          os.Stderr,
@@ -176,12 +160,10 @@ func NewJSONLogger() *logrus.Logger {
 	}
 }
 
-func shutdown(goctx context.Context, timeout time.Duration) {
+func shutdown(stateCtx context.Context) {
 	sort.Sort(shutdowns(app.shutdowns))
 	doshutdown := func(obj Shutdown) error {
-		ctx, cancel := context.WithTimeout(goctx, timeout)
-		defer cancel()
-		return metric(ctx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
+		return metric(stateCtx, fmt.Sprintf("[%T] shutdown...", obj), obj.Shutdown)
 	}
 	for _, obj := range app.shutdowns {
 		if err := doshutdown(obj); err != nil {
@@ -190,12 +172,10 @@ func shutdown(goctx context.Context, timeout time.Duration) {
 	}
 }
 
-func startup(goctx context.Context, timeout time.Duration) error {
+func startup(stateCtx context.Context) error {
 	sort.Sort(startups(app.startups))
 	startup0 := func(obj Startup) error {
-		ctx, cancel := context.WithTimeout(goctx, timeout)
-		defer cancel()
-		return metric(ctx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
+		return metric(stateCtx, fmt.Sprintf("[%T] startup...", obj), obj.Startup)
 	}
 	for _, obj := range app.startups {
 		if err := startup0(obj); err != nil {
@@ -205,9 +185,9 @@ func startup(goctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-func metric(ctx context.Context, name string, step func(ctx context.Context) error) error {
+func metric(stateCtx context.Context, name string, step func(ctx context.Context) error) error {
 	defer func(t time.Time) {
 		Log().Debugf("%s elspaed: %s", name, time.Since(t))
 	}(time.Now())
-	return step(ctx)
+	return step(stateCtx)
 }
