@@ -51,6 +51,10 @@ func Add(obj interface{}) {
 	AddActiveObject(obj)
 }
 
+func Objects() []interface{} {
+	return app.objects
+}
+
 func AddActiveObject(activeobj interface{}) {
 	assert.MustNotNil(activeobj, "add a nil active-object")
 	if dis, ok := activeobj.(Disabled); ok {
